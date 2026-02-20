@@ -1,0 +1,53 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://skill-check.dev/schemas/config.schema.json",
+  "title": "skill-check config",
+  "type": "object",
+  "properties": {
+    "roots": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "include": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "exclude": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "limits": {
+      "type": "object",
+      "properties": {
+        "maxDescriptionChars": { "type": "integer", "minimum": 1 },
+        "maxBodyLines": { "type": "integer", "minimum": 1 },
+        "minDescriptionChars": { "type": "integer", "minimum": 0 },
+        "maxBodyTokens": { "type": "integer", "minimum": 1 }
+      },
+      "additionalProperties": false
+    },
+    "rules": {
+      "type": "object",
+      "additionalProperties": {
+        "enum": ["off", "warn", "error"]
+      }
+    },
+    "allowlist": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "plugins": {
+      "type": "array",
+      "items": { "type": "string" }
+    },
+    "output": {
+      "type": "object",
+      "properties": {
+        "format": { "enum": ["text", "json", "sarif", "html", "github"] },
+        "reportPath": { "type": "string" }
+      },
+      "additionalProperties": false
+    }
+  },
+  "additionalProperties": false
+}

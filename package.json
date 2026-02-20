@@ -1,0 +1,74 @@
+{
+  "name": "skill-check",
+  "version": "0.1.0",
+  "description": "Linter for agent skill files",
+  "type": "module",
+  "private": false,
+  "bin": {
+    "skill-check": "bin/skill-check.js"
+  },
+  "files": [
+    "bin",
+    "dist",
+    "schemas",
+    "skills",
+    "README.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "clean": "rm -rf dist coverage",
+    "build": "tsc -p tsconfig.build.json",
+    "dev": "tsx src/cli/main.ts",
+    "check": "tsx src/cli/main.ts check .",
+    "check:fix": "tsx src/cli/main.ts check . --fix --no-security-scan",
+    "check:security": "tsx src/cli/main.ts check . --security-scan --allow-installs",
+    "security-scan": "tsx src/cli/main.ts security-scan .",
+    "smoke:cli": "bash scripts/smoke-cli.sh",
+    "report": "tsx src/cli/main.ts report .",
+    "lint": "biome check --no-errors-on-unmatched .",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "prepack": "pnpm run clean && pnpm run build",
+    "format": "biome format --write .",
+    "prepare": "lefthook install"
+  },
+  "keywords": [
+    "skills",
+    "agent-skills",
+    "lint",
+    "validator",
+    "cli",
+    "sarif"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/thedaviddias/skill-check.git"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "@clack/prompts": "^1.0.1",
+    "boxen": "^8.0.1",
+    "cli-table3": "^0.6.5",
+    "commander": "^14.0.3",
+    "fast-glob": "^3.3.3",
+    "listr2": "^10.1.0",
+    "minimatch": "^10.2.2",
+    "ora": "^9.3.0",
+    "picocolors": "^1.1.1",
+    "yaml": "^2.8.2"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.4.4",
+    "@types/node": "^25.3.0",
+    "@vitest/coverage-v8": "^4.0.18",
+    "lefthook": "^2.1.1",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.18"
+  },
+  "packageManager": "pnpm@10.30.1+sha512.3590e550d5384caa39bd5c7c739f72270234b2f6059e13018f975c313b1eb9fefcc09714048765d4d9efe961382c312e624572c0420762bdc5d5940cdf9be73a"
+}

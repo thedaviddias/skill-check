@@ -1,0 +1,7 @@
+pre-commit:
+  parallel: false
+  commands:
+    biome:
+      run: pnpm exec biome check --no-errors-on-unmatched .
+    typecheck:
+      run: pnpm run typecheck

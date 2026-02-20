@@ -1,0 +1,76 @@
+name: skill-check
+description: Validate agent SKILL.md files in CI with optional security scanning.
+author: thedaviddias
+branding:
+  icon: shield
+  color: blue
+
+inputs:
+  path:
+    description: Target path passed to `skill-check check`.
+    required: false
+    default: "."
+  cli-version:
+    description: npm version for `npx skill-check@...`.
+    required: false
+    default: latest
+  config:
+    description: Optional config path passed as `--config`.
+    required: false
+    default: ""
+  format:
+    description: Output format (`text`, `json`, or `sarif`).
+    required: false
+    default: text
+  fix:
+    description: Apply safe auto-fixes with `--fix`.
+    required: false
+    default: "false"
+  fail-on-warning:
+    description: Exit non-zero when warnings exist.
+    required: false
+    default: "false"
+  strict:
+    description: Treat warnings as errors.
+    required: false
+    default: "false"
+  lenient:
+    description: Disable selected strict rules.
+    required: false
+    default: "false"
+  security-scan:
+    description: Enable security scan in the check command.
+    required: false
+    default: "false"
+  security-scan-runner:
+    description: Security scan runner (`auto`, `local`, `uvx`, `pipx`).
+    required: false
+    default: auto
+  security-scan-install-policy:
+    description: Install policy for security scan dependencies (`deny`, `allow`).
+    required: false
+    default: deny
+  security-scan-paths:
+    description: Comma-separated scan paths for security scan.
+    required: false
+    default: ""
+  security-scan-skills:
+    description: Comma-separated skills paths for security scan.
+    required: false
+    default: ""
+  sarif-file:
+    description: SARIF file path when `format=sarif`.
+    required: false
+    default: skill-check.sarif.json
+
+outputs:
+  exit-code:
+    description: CLI process exit code.
+  sarif-file:
+    description: Absolute SARIF path when `format=sarif`, otherwise empty.
+  command:
+    description: Full executed command for debugging.
+
+runs:
+  using: node20
+  main: github-action/index.js
