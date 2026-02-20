@@ -189,7 +189,7 @@ interface AgentScanCliOptions {
   mode: string;
   paths?: string[];
   skills?: string[];
-  installPolicy: 'ask' | 'allow' | 'deny';
+  installPolicy: 'allow' | 'deny';
 }
 
 interface InitCommandOptions {
@@ -364,7 +364,7 @@ function normalizeAgentScanOptions(
     mode,
     paths: selectedPaths,
     skills: selectedSkills,
-    installPolicy: denyInstalls ? 'deny' : allowInstalls ? 'allow' : 'ask',
+    installPolicy: denyInstalls ? 'deny' : 'allow',
   };
 }
 
@@ -424,17 +424,9 @@ function renderAutoFixSummary(summary: AutoFixSummary): string {
   return `${lines.join('\n')}\n\n`;
 }
 
-function formatInvocation(invocation: AgentScanInvocation): string {
-  return [invocation.command, ...invocation.args]
-    .map((part) => (part.includes(' ') ? `"${part}"` : part))
-    .join(' ');
-}
-
 async function ensureSecurityScanInstallConsent(
   scanOptions: AgentScanCliOptions,
   invocation: AgentScanInvocation,
-  io: CliIO,
-  format: OutputFormat,
 ): Promise<void> {
   const mayInstallDependency =
     invocation.command !== 'mcp-scan' && !isCommandAvailable('mcp-scan');
@@ -442,36 +434,10 @@ async function ensureSecurityScanInstallConsent(
 
   if (scanOptions.installPolicy === 'allow') return;
 
-  const guidance =
-    'Re-run with --allow-installs, install mcp-scan manually, or skip scan with --no-security-scan.';
-  if (scanOptions.installPolicy === 'deny') {
-    throw new CliError(
-      `Security scan may install dependencies via ${invocation.command}. ${guidance}`,
-      2,
-    );
-  }
-
-  const interactivePromptAllowed =
-    shouldUseInteractiveUi(io) &&
-    format === 'text' &&
-    !isTruthyFlag(process.env.CI);
-  if (!interactivePromptAllowed) {
-    throw new CliError(
-      `Security scan may install dependencies via ${invocation.command} but interactive approval is unavailable. ${guidance}`,
-      2,
-    );
-  }
-
-  const accepted = await confirm({
-    message: `Security scan may install "mcp-scan" with: ${formatInvocation(invocation)}. Continue?`,
-    initialValue: false,
-  });
-  if (isCancel(accepted) || !accepted) {
-    throw new CliError(
-      'Security scan install was declined. Re-run with --no-security-scan or --allow-installs.',
-      2,
-    );
-  }
+  throw new CliError(
+    `Security scan may install dependencies via ${invocation.command}. Re-run without --no-installs, install mcp-scan manually, or skip scan with --no-security-scan.`,
+    2,
+  );
 }
 
 async function runValidationPipeline(
@@ -526,7 +492,7 @@ async function runAgentScanWithFeedback(
     );
   }
 
-  await ensureSecurityScanInstallConsent(scanOptions, invocation, io, format);
+  await ensureSecurityScanInstallConsent(scanOptions, invocation);
 
   if (useInteractiveFeedback) {
     ora().info('Running security scan...');

@@ -5,7 +5,7 @@ Linter for agent skill files — validates SKILL.md files against the spec with 
 ![skill-check demo](docs/assets/skill-check-demo.gif)
 
 Regenerate with `pnpm run demo:readme` (source: `scripts/readme-demo.tape`).
-The demo runs `npx skill-check . --allow-installs` from a fixture directory, so it includes a real security scan and may install scanner dependencies on first run.
+The demo runs `npx skill-check .` from repo root and auto-detects skills in tool directories such as `.agents`.
 
 ## Install
 
@@ -138,13 +138,13 @@ npx skill-check check ~/.claude/skills
 ```
 
 `check` runs the security scan by default.
-If dependencies are missing, `skill-check` asks before installing in interactive terminals.
-In non-interactive/CI environments, use `--allow-installs` to permit automatic installs.
+If dependencies are missing, `skill-check` automatically installs scanner dependencies by default.
+Use `--no-installs` to hard-block automatic installs.
 
 Run security scan without UV by forcing `pipx`:
 
 ```bash
-npx skill-check security-scan . --security-scan-runner pipx --allow-installs
+npx skill-check security-scan . --security-scan-runner pipx
 ```
 
 Run validation + security scan in one pipeline step with explicit runner:
@@ -348,7 +348,7 @@ All rules emit actionable `suggestion` text to guide fixes.
 Releases are automated with [semantic-release](https://github.com/semantic-release/semantic-release). Pushing to `main` (after CI passes) runs the release workflow: commits are analyzed for [Conventional Commits](https://www.conventionalcommits.org/) (`fix:`, `feat:`, `BREAKING CHANGE:`), the version is bumped, `CHANGELOG.md` is updated, the package is published to npm, and a GitHub release is created.
 
 - **Commit messages** are validated locally by [commitlint](https://commitlint.js.org/) (enforced by the `commit-msg` hook). Use `fix:`, `feat:`, `docs:`, `chore:`, etc.
-- **Secrets:** In GitHub, set the `NPM_TOKEN` repository secret (npm automation token with publish scope) so the workflow can publish to npm. `GITHUB_TOKEN` is provided automatically.
+- **npm auth:** Use [npm Trusted Publishing (OIDC)](https://docs.npmjs.com/trusted-publishers) so you don’t need `NPM_TOKEN`. On [npmjs.com](https://www.npmjs.com/) go to the **skill-check** package → **Settings** → **Trusted publishing** → add a GitHub Actions publisher with workflow filename **`publish.yml`** (exact name, including extension). Then the workflow can publish without any npm token. Alternatively, set the `NPM_TOKEN` repository secret for token-based publish.
 
 To simulate a release locally (without publishing): `pnpm run release:dry-run`. It will fail `verifyConditions` without `NPM_TOKEN` and `GITHUB_TOKEN`; in CI both are set.
 

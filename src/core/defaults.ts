@@ -9,6 +9,7 @@ export const DEFAULT_EXCLUDE = [
   '**/build/**',
   '**/.next/**',
   '**/coverage/**',
+  '**/fixtures/**',
 ];
 
 export const DEFAULT_LIMITS: LimitsConfig = {

@@ -12,8 +12,8 @@ pnpm run check:security
 npx skill-check check . --no-security-scan
 ```
 
-If the scan runner needs to install dependencies, interactive terminals ask for approval.
-For CI or non-interactive runs, pass `--allow-installs`.
+If the scan runner needs to install dependencies, automatic installs are enabled by default.
+Use `--no-installs` to hard-block installs.
 
 Run smoke checks with multiple real/fake fixture skills and save outputs:
 
@@ -33,7 +33,7 @@ For maintainers, regenerate the README animation with:
 pnpm run demo:readme
 ```
 
-The demo runs `npx skill-check . --allow-installs` from `fixtures/pass/basic` so it includes a real security scan in non-interactive mode.
+The demo runs `npx skill-check .` from repo root so it auto-detects `.agents`/`.codex`/`.claude` style skill folders and includes a real security scan.
 Source tape: `scripts/readme-demo.tape`.
 
 For monochrome smoke output:
@@ -129,7 +129,7 @@ Run security scan without UV:
 
 ```bash
 npx skill-check security-scan . --security-scan-runner pipx
-npx skill-check security-scan . --security-scan-runner pipx --allow-installs
+npx skill-check security-scan . --security-scan-runner pipx --no-installs
 ```
 
 ## GitHub Action Quickstart

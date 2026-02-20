@@ -40,11 +40,13 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version-file: .nvmrc
+          registry-url: "https://registry.npmjs.org"
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm run build
       - name: Release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # OIDC: leave NPM_TOKEN unset once Trusted Publisher is set for this package on npm
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: npx semantic-release

@@ -7,9 +7,6 @@ Set Height 560
 Set Shell "bash"
 Set TypingSpeed 140ms
 
-Type "cd fixtures/pass/basic"
-Enter
-Sleep 1s
-Type "npx skill-check . --allow-installs"
+Type "npx skill-check ."
 Enter
 Sleep 10s
