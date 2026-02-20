@@ -341,6 +341,15 @@ Run `skill-check rules <id>` for detail on a specific rule.
 
 All rules emit actionable `suggestion` text to guide fixes.
 
+## Releasing
+
+Releases are automated with [semantic-release](https://github.com/semantic-release/semantic-release). Pushing to `main` (after CI passes) runs the release workflow: commits are analyzed for [Conventional Commits](https://www.conventionalcommits.org/) (`fix:`, `feat:`, `BREAKING CHANGE:`), the version is bumped, `CHANGELOG.md` is updated, the package is published to npm, and a GitHub release is created.
+
+- **Commit messages** are validated locally by [commitlint](https://commitlint.js.org/) (enforced by the `commit-msg` hook). Use `fix:`, `feat:`, `docs:`, `chore:`, etc.
+- **Secrets:** In GitHub, set the `NPM_TOKEN` repository secret (npm automation token with publish scope) so the workflow can publish to npm. `GITHUB_TOKEN` is provided automatically.
+
+To simulate a release locally (without publishing): `pnpm run release:dry-run`. It will fail `verifyConditions` without `NPM_TOKEN` and `GITHUB_TOKEN`; in CI both are set.
+
 ## Docs
 
 - `docs/quickstart.md`

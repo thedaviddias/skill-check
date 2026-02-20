@@ -27,6 +27,8 @@
     "check:security": "tsx src/cli/main.ts check . --security-scan --allow-installs",
     "security-scan": "tsx src/cli/main.ts security-scan .",
     "demo:readme": "bash scripts/readme-demo.sh",
+    "release": "semantic-release",
+    "release:dry-run": "semantic-release --dry-run",
     "smoke:cli": "bash scripts/smoke-cli.sh",
     "report": "tsx src/cli/main.ts report .",
     "lint": "biome check --no-errors-on-unmatched .",
@@ -64,9 +66,14 @@
   },
   "devDependencies": {
     "@biomejs/biome": "^2.4.4",
+    "@commitlint/config-conventional": "^20.4.2",
+    "@semantic-release/changelog": "^6.0.3",
+    "@semantic-release/git": "^10.0.1",
     "@types/node": "^25.3.0",
     "@vitest/coverage-v8": "^4.0.18",
+    "commitlint": "^20.4.2",
     "lefthook": "^2.1.1",
+    "semantic-release": "^25.0.3",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3",
     "vitest": "^4.0.18"

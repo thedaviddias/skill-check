@@ -15,14 +15,30 @@ if [[ ! -f "${CLI_ENTRY}" ]]; then
 fi
 
 echo "Generating README demo GIF..."
-if command -v vhs >/dev/null 2>&1; then
+render_with_vhs() {
   (cd "${ROOT_DIR}" && vhs "${TAPE_REL}")
-elif command -v docker >/dev/null 2>&1; then
+}
+
+render_with_docker() {
   docker run --rm \
     -v "${ROOT_DIR}:/vhs" \
     -w /vhs \
     ghcr.io/charmbracelet/vhs:latest \
     "${TAPE_REL}"
+}
+
+if command -v vhs >/dev/null 2>&1; then
+  if ! render_with_vhs; then
+    echo "Local VHS failed; trying Docker fallback..."
+    if command -v docker >/dev/null 2>&1; then
+      render_with_docker
+    else
+      echo "Docker fallback is unavailable." >&2
+      exit 1
+    fi
+  fi
+elif command -v docker >/dev/null 2>&1; then
+  render_with_docker
 else
   echo "Neither vhs nor docker is available." >&2
   echo "Install VHS (https://github.com/charmbracelet/vhs) or Docker, then re-run pnpm run demo:readme." >&2

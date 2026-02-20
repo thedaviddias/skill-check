@@ -5,3 +5,8 @@ pre-commit:
       run: pnpm exec biome check --no-errors-on-unmatched .
     typecheck:
       run: pnpm run typecheck
+
+commit-msg:
+  commands:
+    commitlint:
+      run: pnpm exec commitlint --edit {1}
