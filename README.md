@@ -5,11 +5,12 @@ Linter for agent skill files — validates SKILL.md files against the spec with 
 ![skill-check demo](docs/assets/skill-check-demo.gif)
 
 Regenerate with `pnpm run demo:readme` (source: `scripts/readme-demo.tape`).
+The demo runs `npx skill-check . --allow-installs` from a fixture directory, so it includes a real security scan and may install scanner dependencies on first run.
 
 ## Install
 
 ```bash
-npx skill-check check .
+npx skill-check .
 ```
 
 Global install via curl:
@@ -29,6 +30,7 @@ brew install skill-check
 
 | Command | Description |
 |---|---|
+| `skill-check [path]` | Shorthand for `skill-check check [path]` |
 | `skill-check check [path]` | Run validation (and optional security scan) |
 | `skill-check new <name>` | Scaffold a new skill directory with SKILL.md template |
 | `skill-check watch [path]` | Watch for changes and re-run validation on save |
@@ -64,7 +66,7 @@ brew install skill-check
 
 **HTML reports** are written to `skill-check-report.html` (or `output.reportPath`). In an interactive terminal the report opens in your browser automatically; use `--no-open` to skip.
 
-**View locally:** `npx skill-check check . --format html` or open the file directly: `open skill-check-report.html` (macOS).
+**View locally:** `npx skill-check . --format html` or open the file directly: `open skill-check-report.html` (macOS).
 
 The `text` formatter includes quality score bars per skill, colorized severity badges, and boxed summaries.
 An ASCII CLI banner is shown in interactive text mode; set `SKILL_CHECK_NO_BANNER=1` to disable it.
@@ -131,7 +133,7 @@ npx skill-check init --interactive
 `skill-check` can validate repos or direct skills directories:
 
 ```bash
-npx skill-check check /path/to/repo
+npx skill-check /path/to/repo
 npx skill-check check ~/.claude/skills
 ```
 

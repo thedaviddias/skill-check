@@ -46,6 +46,15 @@ describe('CLI integration', () => {
     expect(code).toBe(0);
   });
 
+  it('supports shorthand path invocation for check', async () => {
+    const { io } = createIO();
+    const code = await runCli(
+      [path.join(fixturesRoot, 'pass/basic'), '--no-security-scan'],
+      io,
+    );
+    expect(code).toBe(0);
+  });
+
   it('returns 0 for valid multi-skill fixtures', async () => {
     const { io } = createIO();
     const code = await runCli(
@@ -314,7 +323,7 @@ describe('CLI integration', () => {
     );
   });
 
-  it('returns 2 for invalid runner on security-scan command', async () => {
+  it('keeps explicit security-scan command behavior', async () => {
     const { io, stderr } = createIO();
     const code = await runCli(
       ['security-scan', '.', '--security-scan-runner', 'invalid-runner'],
@@ -329,5 +338,12 @@ describe('CLI integration', () => {
     const code = await runCli(['init', '--interactive'], io);
     expect(code).toBe(2);
     expect(stderr.join('')).toContain('Interactive init requires a TTY');
+  });
+
+  it('keeps help output behavior', async () => {
+    const { io, stderr } = createIO();
+    const code = await runCli(['--help'], io);
+    expect(code).toBe(0);
+    expect(stderr.join('')).toBe('');
   });
 });

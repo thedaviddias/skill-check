@@ -69,6 +69,19 @@ const defaultIO: CliIO = {
   stderr: (text) => process.stderr.write(text),
 };
 
+const ROOT_COMMANDS = new Set([
+  'check',
+  'report',
+  'security-scan',
+  'rules',
+  'new',
+  'diff',
+  'watch',
+  'init',
+  'help',
+  'version',
+]);
+
 function collectList(value: string, previous: string[]): string[] {
   const parsed = value
     .split(',')
@@ -194,6 +207,19 @@ function parseCommaSeparated(value: string): string[] {
     .split(',')
     .map((entry) => entry.trim())
     .filter(Boolean);
+}
+
+function normalizeRootCommandArgs(argv: string[]): string[] {
+  if (argv.length === 0) {
+    return argv;
+  }
+
+  const [first] = argv;
+  if (!first || first.startsWith('-') || ROOT_COMMANDS.has(first)) {
+    return argv;
+  }
+
+  return ['check', ...argv];
 }
 
 function normalizeCheckCommandOptions(
@@ -1021,7 +1047,8 @@ export async function runCli(
     });
 
   try {
-    await program.parseAsync(argv, { from: 'user' });
+    const normalizedArgv = normalizeRootCommandArgs(argv);
+    await program.parseAsync(normalizedArgv, { from: 'user' });
     return finalExitCode;
   } catch (error) {
     if (error instanceof CommanderError) {

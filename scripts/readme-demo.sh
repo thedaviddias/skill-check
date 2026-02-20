@@ -15,8 +15,23 @@ if [[ ! -f "${CLI_ENTRY}" ]]; then
 fi
 
 echo "Generating README demo GIF..."
+run_with_clean_npm_env() {
+  env \
+    -u npm_config_npm_globalconfig \
+    -u npm_config_verify_deps_before_run \
+    -u npm_config__jsr_registry \
+    -u npm_config_store_dir \
+    -u NPM_CONFIG_NPM_GLOBALCONFIG \
+    -u NPM_CONFIG_VERIFY_DEPS_BEFORE_RUN \
+    -u NPM_CONFIG__JSR_REGISTRY \
+    -u NPM_CONFIG_STORE_DIR \
+    npm_config_loglevel=error \
+    NPM_CONFIG_LOGLEVEL=error \
+    "$@"
+}
+
 render_with_vhs() {
-  (cd "${ROOT_DIR}" && vhs "${TAPE_REL}")
+  (cd "${ROOT_DIR}" && run_with_clean_npm_env vhs "${TAPE_REL}")
 }
 
 render_with_docker() {

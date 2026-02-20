@@ -5,8 +5,11 @@ Set FontSize 18
 Set Width 1000
 Set Height 560
 Set Shell "bash"
-Set TypingSpeed 90ms
+Set TypingSpeed 140ms
 
-Type "FORCE_COLOR=1 npx skill-check check fixtures/fail/multi-mixed --no-security-scan"
+Type "cd fixtures/pass/basic"
+Enter
+Sleep 1s
+Type "npx skill-check . --allow-installs"
 Enter
 Sleep 10s

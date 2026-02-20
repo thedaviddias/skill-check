@@ -33,7 +33,7 @@ For maintainers, regenerate the README animation with:
 pnpm run demo:readme
 ```
 
-The demo intentionally runs `check --no-security-scan` for deterministic, fast output.
+The demo runs `npx skill-check . --allow-installs` from `fixtures/pass/basic` so it includes a real security scan in non-interactive mode.
 Source tape: `scripts/readme-demo.tape`.
 
 For monochrome smoke output:
@@ -72,7 +72,7 @@ npx skill-check init --interactive
 Use against another repo:
 
 ```bash
-npx skill-check check /path/to/repo
+npx skill-check /path/to/repo
 ```
 
 Apply safe automatic fixes:
