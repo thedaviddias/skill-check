@@ -25,6 +25,17 @@ Smoke runs a real security scan by default.
 Smoke also runs `check --fix` on a temp copy of `fixtures/fail/multi-mixed` and then verifies it passes.
 Default smoke security runner is `pipx`.
 
+## README Demo Animation
+
+For maintainers, regenerate the README animation with:
+
+```bash
+pnpm run demo:readme
+```
+
+The demo intentionally runs `check --no-security-scan` for deterministic, fast output.
+Source tape: `scripts/readme-demo.tape`.
+
 For monochrome smoke output:
 
 ```bash

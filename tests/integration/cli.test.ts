@@ -6,6 +6,11 @@ import { runCli } from '../../src/cli/main.js';
 
 const fixturesRoot = path.resolve('fixtures');
 
+const ANSI_RE = new RegExp(`${String.fromCharCode(0x1b)}\\[[0-9;]*m`, 'g');
+function stripAnsi(text: string): string {
+  return text.replace(ANSI_RE, '');
+}
+
 function createIO() {
   const stdout: string[] = [];
   const stderr: string[] = [];
@@ -227,7 +232,7 @@ describe('CLI integration', () => {
       io,
     );
     expect(code).toBe(1);
-    const output = stdout.join('');
+    const output = stripAnsi(stdout.join(''));
     expect(output).toContain('VALIDATION REPORT');
     expect(output).toContain('[FILE]');
     expect(output).toContain('fake-bad-skill/SKILL.md');

@@ -26,6 +26,7 @@
     "check:fix": "tsx src/cli/main.ts check . --fix --no-security-scan",
     "check:security": "tsx src/cli/main.ts check . --security-scan --allow-installs",
     "security-scan": "tsx src/cli/main.ts security-scan .",
+    "demo:readme": "bash scripts/readme-demo.sh",
     "smoke:cli": "bash scripts/smoke-cli.sh",
     "report": "tsx src/cli/main.ts report .",
     "lint": "biome check --no-errors-on-unmatched .",

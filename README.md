@@ -2,6 +2,10 @@
 
 Linter for agent skill files — validates SKILL.md files against the spec with extensible custom rules.
 
+![skill-check demo](docs/assets/skill-check-demo.gif)
+
+Regenerate with `pnpm run demo:readme` (source: `scripts/readme-demo.tape`).
+
 ## Install
 
 ```bash
