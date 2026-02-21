@@ -1,3 +1,10 @@
+# [1.1.0](https://github.com/thedaviddias/skill-check/compare/v1.0.0...v1.1.0) (2026-02-21)
+
+
+### Features
+
+* finalize cli UX and demo rendering improvements ([a7f2a8b](https://github.com/thedaviddias/skill-check/commit/a7f2a8be669213f031127c1c983eb601928250d5))
+
 # 1.0.0 (2026-02-21)
 
 
