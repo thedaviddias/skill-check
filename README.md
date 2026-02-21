@@ -382,7 +382,13 @@ Run `skill-check rules <id>` for detail on a specific rule.
 | `frontmatter.description_required` | error | yes |
 | `frontmatter.name_matches_directory` | error | yes |
 | `frontmatter.name_slug_format` | error | yes |
+| `frontmatter.name_max_length` | error | no |
 | `frontmatter.field_order` | error | yes |
+| `frontmatter.unknown_fields` | warn | no |
+| `frontmatter.compatibility_max_length` | warn | no |
+| `frontmatter.metadata_string_values` | warn | no |
+| `frontmatter.allowed_tools_format` | warn | no |
+| `description.non_empty` | error | no |
 | `description.max_length` | error | no |
 | `description.use_when_phrase` | warn | yes |
 | `description.min_recommended_length` | warn | yes |

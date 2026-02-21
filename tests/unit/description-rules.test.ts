@@ -16,6 +16,22 @@ function makeSkill(description: string): SkillArtifact {
   };
 }
 
+function makeSkillRaw(
+  frontmatter: Record<string, unknown> | null,
+): SkillArtifact {
+  return {
+    id: 'test/my-skill',
+    category: 'test',
+    slug: 'my-skill',
+    filePath: '/tmp/skills/my-skill/SKILL.md',
+    relativePath: 'skills/my-skill/SKILL.md',
+    content: '',
+    body: '',
+    frontmatter,
+    frontmatterRaw: '',
+  };
+}
+
 const context: RuleContext = {
   config: {
     cwd: '/tmp',
@@ -28,6 +44,8 @@ const context: RuleContext = {
       maxBodyLines: 500,
       minDescriptionChars: 20,
       maxBodyTokens: 5000,
+      maxNameChars: 64,
+      maxCompatibilityChars: 500,
     },
     rules: {},
     allowlist: [],
@@ -39,6 +57,53 @@ const context: RuleContext = {
   },
   resolveRuleLevel: (_id, fallback) => fallback,
 };
+
+describe('description.non_empty', () => {
+  const rule = descriptionRules.find((r) => r.id === 'description.non_empty')!;
+
+  it('passes with a non-empty description', () => {
+    expect(rule.evaluate(makeSkill('Use when testing.'), context)).toHaveLength(
+      0,
+    );
+  });
+
+  it('fails with whitespace-only description', async () => {
+    const skill = makeSkill('   ');
+    skill.frontmatter = { name: 'my-skill', description: '   ' };
+    const findings = await rule.evaluate(skill, context);
+    expect(findings).toHaveLength(1);
+    expect(findings[0]?.message).toContain('empty or whitespace-only');
+  });
+
+  it('fails with empty string description', async () => {
+    const skill = makeSkill('');
+    skill.frontmatter = { name: 'my-skill', description: '' };
+    const findings = await rule.evaluate(skill, context);
+    expect(findings).toHaveLength(1);
+    expect(findings[0]?.message).toContain('empty or whitespace-only');
+  });
+
+  it('skips when description is absent', () => {
+    const skill = makeSkill('');
+    skill.frontmatter = { name: 'my-skill' };
+    expect(rule.evaluate(skill, context)).toHaveLength(0);
+  });
+
+  it('skips when no frontmatter', () => {
+    const skill = makeSkill('');
+    skill.frontmatter = null;
+    expect(rule.evaluate(skill, context)).toHaveLength(0);
+  });
+
+  it('passes when description is a non-string value (coerced via String())', () => {
+    expect(
+      rule.evaluate(
+        makeSkillRaw({ name: 'my-skill', description: 42 }),
+        context,
+      ),
+    ).toHaveLength(0);
+  });
+});
 
 describe('description.max_length', () => {
   const rule = descriptionRules.find((r) => r.id === 'description.max_length')!;
@@ -62,6 +127,15 @@ describe('description.max_length', () => {
     const skill = makeSkill('');
     skill.frontmatter = { name: 'my-skill', description: '' };
     expect(rule.evaluate(skill, context)).toHaveLength(0);
+  });
+
+  it('skips when description is not a string', () => {
+    expect(
+      rule.evaluate(
+        makeSkillRaw({ name: 'my-skill', description: 42 }),
+        context,
+      ),
+    ).toHaveLength(0);
   });
 });
 

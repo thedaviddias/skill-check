@@ -89,6 +89,8 @@ export function ensureInitConfig(targetPath: string, force = false): void {
       maxBodyLines: 500,
       minDescriptionChars: 50,
       maxBodyTokens: 5000,
+      maxNameChars: 64,
+      maxCompatibilityChars: 500,
     },
     rules: {
       'description.use_when_phrase': 'warn',

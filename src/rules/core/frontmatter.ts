@@ -5,6 +5,15 @@ function normalizeName(name: unknown): string {
   return name.replace(/^['"]|['"]$/g, '').trim();
 }
 
+const KNOWN_FRONTMATTER_FIELDS = new Set([
+  'name',
+  'description',
+  'license',
+  'compatibility',
+  'metadata',
+  'allowed-tools',
+]);
+
 export const frontmatterRules: RuleDefinition[] = [
   {
     id: 'frontmatter.required',
@@ -95,6 +104,24 @@ export const frontmatterRules: RuleDefinition[] = [
     },
   },
   {
+    id: 'frontmatter.name_max_length',
+    description: 'Frontmatter name must not exceed 64 characters.',
+    defaultSeverity: 'error',
+    evaluate(skill, context) {
+      if (!skill.frontmatter) return [];
+      const name = normalizeName(skill.frontmatter.name);
+      if (!name) return [];
+      const max = context.config.limits.maxNameChars;
+      if (name.length <= max) return [];
+      return [
+        {
+          message: `name length ${name.length} exceeds max ${max}`,
+          suggestion: `Shorten the name to ${max} characters or fewer.`,
+        },
+      ];
+    },
+  },
+  {
     id: 'frontmatter.field_order',
     description: 'Frontmatter should list name before description.',
     defaultSeverity: 'error',
@@ -109,6 +136,98 @@ export const frontmatterRules: RuleDefinition[] = [
           message: 'frontmatter field order should be: name, description',
           suggestion:
             'Reorder so "name:" comes before "description:" in frontmatter.',
+        },
+      ];
+    },
+  },
+  {
+    id: 'frontmatter.unknown_fields',
+    description:
+      'Frontmatter should only contain spec-defined fields (name, description, license, compatibility, metadata, allowed-tools).',
+    defaultSeverity: 'warn',
+    evaluate(skill) {
+      if (!skill.frontmatter) return [];
+      const unknown = Object.keys(skill.frontmatter).filter(
+        (key) => !KNOWN_FRONTMATTER_FIELDS.has(key),
+      );
+      if (unknown.length === 0) return [];
+      const plural = unknown.length === 1 ? 'field' : 'fields';
+      return [
+        {
+          message: `unknown frontmatter ${plural}: ${unknown.join(', ')}`,
+          suggestion: `The spec defines: ${[...KNOWN_FRONTMATTER_FIELDS].join(', ')}. Remove or rename unrecognized fields.`,
+        },
+      ];
+    },
+  },
+  {
+    id: 'frontmatter.compatibility_max_length',
+    description:
+      'Compatibility field must not exceed 500 characters when provided.',
+    defaultSeverity: 'warn',
+    evaluate(skill, context) {
+      if (!skill.frontmatter) return [];
+      const value = skill.frontmatter.compatibility;
+      if (value === undefined || value === null) return [];
+      if (typeof value !== 'string') return [];
+      const max = context.config.limits.maxCompatibilityChars;
+      if (value.trim().length <= max) return [];
+      return [
+        {
+          message: `compatibility length ${value.trim().length} exceeds max ${max}`,
+          suggestion: `Shorten the compatibility field to ${max} characters or fewer.`,
+        },
+      ];
+    },
+  },
+  {
+    id: 'frontmatter.metadata_string_values',
+    description:
+      'Metadata field must be a map of string keys to string values.',
+    defaultSeverity: 'warn',
+    evaluate(skill) {
+      if (!skill.frontmatter) return [];
+      const metadata = skill.frontmatter.metadata;
+      if (metadata === undefined || metadata === null) return [];
+      if (typeof metadata !== 'object' || Array.isArray(metadata)) {
+        return [
+          {
+            message: 'metadata must be a key-value object',
+            suggestion:
+              'Use metadata as a YAML mapping, e.g. metadata:\\n  author: example-org',
+          },
+        ];
+      }
+      const nonStringKeys: string[] = [];
+      for (const [key, val] of Object.entries(
+        metadata as Record<string, unknown>,
+      )) {
+        if (typeof val !== 'string') nonStringKeys.push(key);
+      }
+      if (nonStringKeys.length === 0) return [];
+      return [
+        {
+          message: `metadata values must be strings; non-string keys: ${nonStringKeys.join(', ')}`,
+          suggestion:
+            'Convert metadata values to strings, e.g. version: "1.0" instead of version: 1.0',
+        },
+      ];
+    },
+  },
+  {
+    id: 'frontmatter.allowed_tools_format',
+    description: 'allowed-tools field must be a space-delimited string.',
+    defaultSeverity: 'warn',
+    evaluate(skill) {
+      if (!skill.frontmatter) return [];
+      const value = skill.frontmatter['allowed-tools'];
+      if (value === undefined || value === null) return [];
+      if (typeof value === 'string') return [];
+      return [
+        {
+          message: 'allowed-tools must be a string (space-delimited tool list)',
+          suggestion:
+            'Use a space-delimited string, e.g. allowed-tools: Bash(git:*) Read',
         },
       ];
     },

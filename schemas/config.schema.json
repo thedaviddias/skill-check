@@ -22,7 +22,9 @@
         "maxDescriptionChars": { "type": "integer", "minimum": 1 },
         "maxBodyLines": { "type": "integer", "minimum": 1 },
         "minDescriptionChars": { "type": "integer", "minimum": 0 },
-        "maxBodyTokens": { "type": "integer", "minimum": 1 }
+        "maxBodyTokens": { "type": "integer", "minimum": 1 },
+        "maxNameChars": { "type": "integer", "minimum": 1 },
+        "maxCompatibilityChars": { "type": "integer", "minimum": 1 }
       },
       "additionalProperties": false
     },

@@ -11,6 +11,25 @@ function getDescription(
 
 export const descriptionRules: RuleDefinition[] = [
   {
+    id: 'description.non_empty',
+    description: 'Description must not be empty or whitespace-only.',
+    defaultSeverity: 'error',
+    evaluate(skill) {
+      if (!skill.frontmatter) return [];
+      const raw = skill.frontmatter.description;
+      if (raw === undefined || raw === null) return [];
+      const trimmed = typeof raw === 'string' ? raw.trim() : String(raw).trim();
+      if (trimmed.length > 0) return [];
+      return [
+        {
+          message: 'description is empty or whitespace-only',
+          suggestion:
+            'Provide a meaningful description. Start with "Use when" to help agents match this skill.',
+        },
+      ];
+    },
+  },
+  {
     id: 'description.max_length',
     description: 'Description must be within configured max length.',
     defaultSeverity: 'error',

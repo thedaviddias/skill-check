@@ -17,6 +17,8 @@ export const DEFAULT_LIMITS: LimitsConfig = {
   maxBodyLines: 500,
   minDescriptionChars: 50,
   maxBodyTokens: 5000,
+  maxNameChars: 64,
+  maxCompatibilityChars: 500,
 };
 
 export const DEFAULT_OUTPUT: OutputConfig = {
@@ -29,8 +31,14 @@ export const DEFAULT_RULE_LEVELS: Record<string, RuleLevel> = {
   'frontmatter.description_required': 'error',
   'frontmatter.name_matches_directory': 'error',
   'frontmatter.name_slug_format': 'error',
+  'frontmatter.name_max_length': 'error',
   'frontmatter.field_order': 'error',
+  'frontmatter.unknown_fields': 'warn',
+  'frontmatter.compatibility_max_length': 'warn',
+  'frontmatter.metadata_string_values': 'warn',
+  'frontmatter.allowed_tools_format': 'warn',
   'description.max_length': 'error',
+  'description.non_empty': 'error',
   'description.use_when_phrase': 'warn',
   'description.min_recommended_length': 'warn',
   'body.max_lines': 'error',

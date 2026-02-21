@@ -28,6 +28,8 @@ const context: RuleContext = {
       maxBodyLines: 10,
       minDescriptionChars: 50,
       maxBodyTokens: 20,
+      maxNameChars: 64,
+      maxCompatibilityChars: 500,
     },
     rules: {},
     allowlist: [],

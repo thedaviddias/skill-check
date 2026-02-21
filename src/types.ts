@@ -25,6 +25,8 @@ export interface LimitsConfig {
   maxBodyLines: number;
   minDescriptionChars: number;
   maxBodyTokens: number;
+  maxNameChars: number;
+  maxCompatibilityChars: number;
 }
 
 export interface OutputConfig {

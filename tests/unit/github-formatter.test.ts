@@ -15,6 +15,8 @@ function makeResult(overrides: Partial<AnalysisResult> = {}): AnalysisResult {
         maxBodyLines: 500,
         minDescriptionChars: 50,
         maxBodyTokens: 5000,
+        maxNameChars: 64,
+        maxCompatibilityChars: 500,
       },
       rules: {},
       allowlist: [],
