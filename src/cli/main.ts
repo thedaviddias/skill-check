@@ -18,6 +18,7 @@ import pc from 'picocolors';
 import {
   type AgentScanInvocation,
   type AgentScanRunner,
+  deriveAgentScanSkillRoots,
   isCommandAvailable,
   isValidAgentScanRunner,
   resolveAgentScanInvocation,
@@ -30,17 +31,25 @@ import {
   resolveExitCode,
   writeIfRequested,
 } from '../core/analyze.js';
+import { buildSkillArtifact } from '../core/artifact.js';
 import {
   type BaselineDiff,
   diffBaseline,
   loadBaseline,
 } from '../core/baseline.js';
 import {
+  applyBodySplitPlan,
+  planBodySplit,
+  type SourceLineRange,
+  type SplitPlan,
+} from '../core/body-split.js';
+import {
   renderConclusionCard,
   type SecurityStatus,
   type ValidationStatus,
 } from '../core/conclusion-card.js';
 import { resolveConfig } from '../core/config.js';
+import { discoverSkillFiles } from '../core/discovery.js';
 import { detectDuplicates } from '../core/duplicates.js';
 import { CliError } from '../core/errors.js';
 import {
@@ -61,6 +70,7 @@ import {
 } from '../core/remote-target.js';
 import { renderMarkdownReport } from '../core/report.js';
 import { toSarif } from '../core/sarif.js';
+import { writeShareImage } from '../core/share-image.js';
 import { coreRules } from '../rules/core/index.js';
 import type {
   AnalysisResult,
@@ -82,6 +92,7 @@ const defaultIO: CliIO = {
 
 const ROOT_COMMANDS = new Set([
   'check',
+  'split-body',
   'report',
   'security-scan',
   'rules',
@@ -203,6 +214,29 @@ interface AgentScanCliOptions {
   installPolicy: 'allow' | 'deny';
 }
 
+function withInferredSecurityScanSkills(
+  scanOptions: AgentScanCliOptions,
+  skillFilePaths: string[],
+): AgentScanCliOptions {
+  if (scanOptions.skills && scanOptions.skills.length > 0) {
+    return scanOptions;
+  }
+
+  const inferredSkills = deriveAgentScanSkillRoots(skillFilePaths);
+  if (inferredSkills.length === 0) {
+    return scanOptions;
+  }
+  const [selectedSkillRoot] = inferredSkills;
+  if (!selectedSkillRoot) {
+    return scanOptions;
+  }
+
+  return {
+    ...scanOptions,
+    skills: [selectedSkillRoot],
+  };
+}
+
 interface InitCommandOptions {
   force?: boolean;
   interactive?: boolean;
@@ -211,6 +245,12 @@ interface InitCommandOptions {
 interface CheckCommandOptions {
   fix: boolean;
   interactive: boolean;
+  share: boolean;
+  shareOut?: string;
+}
+
+interface SplitBodyCommandOptions {
+  write: boolean;
 }
 
 interface ResolvedCommandTarget {
@@ -269,6 +309,16 @@ function normalizeCheckCommandOptions(
   return {
     fix: raw.fix === true,
     interactive: raw.interactive === true,
+    share: raw.share === true,
+    shareOut: typeof raw.shareOut === 'string' ? raw.shareOut : undefined,
+  };
+}
+
+function normalizeSplitBodyCommandOptions(
+  raw: Record<string, unknown>,
+): SplitBodyCommandOptions {
+  return {
+    write: raw.write === true,
   };
 }
 
@@ -765,6 +815,24 @@ function countAffectedFiles(diagnostics: Diagnostic[]): number {
   return new Set(diagnostics.map((diagnostic) => diagnostic.file)).size;
 }
 
+function formatSourceRange(range: SourceLineRange): string {
+  return `${range.startLine}-${range.endLine}`;
+}
+
+function toErrorText(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function renderSplitPlanLine(plan: SplitPlan, maxBodyLines: number): string {
+  if (plan.status === 'noop') {
+    return `${pc.cyan('[NOOP]')} ${plan.skillRelativePath} body lines ${plan.beforeLineCount} <= max ${maxBodyLines}\n`;
+  }
+  if (plan.status === 'blocked') {
+    return `${pc.red('[BLOCKED]')} ${plan.skillRelativePath} ${plan.reason ?? 'Cannot split body automatically.'}\n`;
+  }
+  return `${pc.green('[PLAN]')} ${plan.skillRelativePath} lines ${plan.beforeLineCount} -> ${plan.afterLineCount}\n`;
+}
+
 export async function runCli(
   argv: string[],
   io: CliIO = defaultIO,
@@ -800,6 +868,11 @@ export async function runCli(
           '--interactive',
           'Prompt before applying each fix (use with --fix)',
         )
+        .option('--share', 'Render a share card (text format only)')
+        .option(
+          '--share-out <path>',
+          'Write share card image file (default: ./skill-check-share.png)',
+        )
         .option('--no-open', 'Do not open HTML report in browser')
         .option('--baseline <path>', 'Compare against a previous JSON run')
         .action(
@@ -822,13 +895,24 @@ export async function runCli(
               target,
               io,
               async (resolvedTarget) => {
-                const cwd = resolvedTarget.target ?? process.cwd();
+                const cwd =
+                  resolvedTarget.isRemote && resolvedTarget.target
+                    ? resolvedTarget.target
+                    : process.cwd();
                 const config = await resolveConfig(
                   cwd,
                   resolvedTarget.target,
                   options,
                 );
-                maybeRenderBanner(config.output.format);
+                if (!checkOptions.share) {
+                  maybeRenderBanner(config.output.format);
+                }
+                if (checkOptions.share && config.output.format !== 'text') {
+                  throw new CliError('--share requires text output format.', 2);
+                }
+                if (checkOptions.shareOut && !checkOptions.share) {
+                  throw new CliError('--share-out requires --share.', 2);
+                }
                 let result = await runValidationPipeline(
                   cwd,
                   config,
@@ -953,14 +1037,16 @@ export async function runCli(
                   }
                   io.stdout(`Wrote ${reportPath}\n`);
                 } else {
-                  if (fixSummary) {
-                    io.stdout(renderAutoFixSummary(fixSummary));
+                  if (!checkOptions.share) {
+                    if (fixSummary) {
+                      io.stdout(renderAutoFixSummary(fixSummary));
+                    }
+                    io.stdout(
+                      renderText(result, scores, {
+                        includeConclusion: false,
+                      }),
+                    );
                   }
-                  io.stdout(
-                    renderText(result, scores, {
-                      includeConclusion: false,
-                    }),
-                  );
                 }
 
                 if (baselineDiff && (format === 'text' || format === 'html')) {
@@ -978,8 +1064,12 @@ export async function runCli(
                 }
                 let scanExitCode: number | undefined;
                 if (scanOptions.enabled) {
-                  scanExitCode = await runAgentScanWithFeedback(
+                  const effectiveScanOptions = withInferredSecurityScanSkills(
                     scanOptions,
+                    result.skills.map((skill) => skill.filePath),
+                  );
+                  scanExitCode = await runAgentScanWithFeedback(
+                    effectiveScanOptions,
                     resolvedTarget.target,
                     io,
                     format,
@@ -1012,10 +1102,25 @@ export async function runCli(
                     ),
                     elapsedMs: performance.now() - checkStartedAt,
                     runCommand,
+                    mode: checkOptions.share ? 'share' : 'default',
                   });
                   io.stdout(`${conclusion.card}\n`);
                   if (conclusion.fullCommandPlain) {
                     io.stdout(`${conclusion.fullCommandPlain}\n`);
+                  }
+                  if (checkOptions.share) {
+                    const shareOutputPath = path.resolve(
+                      process.cwd(),
+                      checkOptions.shareOut ?? 'skill-check-share.png',
+                    );
+                    const shareText = conclusion.fullCommandPlain
+                      ? `${conclusion.card}\n${conclusion.fullCommandPlain}`
+                      : conclusion.card;
+                    const writtenPath = writeShareImage(
+                      shareText,
+                      shareOutputPath,
+                    );
+                    io.stdout(`${pc.bold('Share image:')} ${writtenPath}\n`);
                   }
                 }
 
@@ -1026,6 +1131,114 @@ export async function runCli(
         ),
     ),
   );
+
+  program
+    .command('split-body [target]')
+    .description(
+      'Preview or apply section-based body split into references/*.md files',
+    )
+    .option('--write', 'Apply split changes to files')
+    .option('--config <path>', 'Path to skill-check config file')
+    .option('--max-body-lines <n>', 'Override max body lines', parseNumber)
+    .option('--include <glob>', 'Additional include glob(s)', collectList, [])
+    .option('--exclude <glob>', 'Additional exclude glob(s)', collectList, [])
+    .action(
+      async (
+        target: string | undefined,
+        rawOptions: Record<string, unknown>,
+      ) => {
+        assertLocalOnlyTarget(target, 'split-body');
+
+        const splitOptions = normalizeSplitBodyCommandOptions(rawOptions);
+        const options = normalizeCliOptions(rawOptions);
+        if (options.format) {
+          throw new CliError(
+            'split-body does not support --format. It always prints text output.',
+            2,
+          );
+        }
+
+        const config = await resolveConfig(process.cwd(), target, options);
+        const skillFiles = await discoverSkillFiles(config);
+        const skills = skillFiles.map((filePath) =>
+          buildSkillArtifact(filePath, config.cwd),
+        );
+        const plans = skills.map((skill) =>
+          planBodySplit(skill, config.limits.maxBodyLines),
+        );
+
+        io.stdout(
+          `${pc.bold('split-body')} ${pc.dim(splitOptions.write ? 'apply' : 'preview')}\n`,
+        );
+        io.stdout(
+          `${pc.dim('max-body-lines:')} ${config.limits.maxBodyLines}\n`,
+        );
+        io.stdout(`${pc.dim('skills evaluated:')} ${skills.length}\n\n`);
+
+        let plannedCount = 0;
+        let blockedCount = 0;
+        let noopCount = 0;
+        let writtenSkillCount = 0;
+        let writtenReferenceCount = 0;
+
+        for (const plan of plans) {
+          io.stdout(renderSplitPlanLine(plan, config.limits.maxBodyLines));
+
+          if (plan.status === 'blocked') {
+            blockedCount += 1;
+            continue;
+          }
+
+          if (plan.status === 'noop') {
+            noopCount += 1;
+            continue;
+          }
+
+          plannedCount += 1;
+          for (const reference of plan.referencesToCreate) {
+            const details = `(${reference.relativePath}, source lines ${formatSourceRange(reference.sourceLineRange)})`;
+            if (splitOptions.write) {
+              io.stdout(`  ${pc.green('create')} ${details}\n`);
+            } else {
+              io.stdout(`  ${pc.dim('would create')} ${details}\n`);
+            }
+          }
+
+          if (splitOptions.write) {
+            try {
+              const applied = applyBodySplitPlan(plan);
+              if (applied.updatedSkill) {
+                writtenSkillCount += 1;
+              }
+              writtenReferenceCount += applied.writtenReferenceFiles.length;
+            } catch (error) {
+              throw new CliError(
+                `Failed to write split-body output for ${plan.skillRelativePath}: ${toErrorText(error)}`,
+                1,
+              );
+            }
+          }
+
+          if (plan.afterLineCount > config.limits.maxBodyLines) {
+            io.stdout(
+              `${pc.yellow('[WARN]')} ${plan.skillRelativePath} still exceeds limit after split. Refine with docs/skills/split-into-references/SKILL.md.\n`,
+            );
+          }
+        }
+
+        io.stdout('\n');
+        io.stdout(
+          `${pc.bold('Summary:')} planned=${plannedCount} blocked=${blockedCount} noop=${noopCount}\n`,
+        );
+        if (splitOptions.write) {
+          io.stdout(
+            `${pc.bold('Writes:')} updated_skills=${writtenSkillCount} created_references=${writtenReferenceCount}\n`,
+          );
+        }
+
+        finalExitCode = blockedCount > 0 ? 2 : 0;
+      },
+    );
 
   addSharedOptions(
     program
@@ -1042,7 +1255,10 @@ export async function runCli(
             target,
             io,
             async (resolvedTarget) => {
-              const cwd = resolvedTarget.target ?? process.cwd();
+              const cwd =
+                resolvedTarget.isRemote && resolvedTarget.target
+                  ? resolvedTarget.target
+                  : process.cwd();
               const result = await analyze(cwd, resolvedTarget.target, options);
               const format = result.config.output.format;
               if (format === 'html') {
@@ -1097,8 +1313,24 @@ export async function runCli(
             target,
             io,
             async (resolvedTarget) => {
-              const scanExitCode = await runAgentScanWithFeedback(
+              const scanCwd =
+                resolvedTarget.isRemote && resolvedTarget.target
+                  ? resolvedTarget.target
+                  : process.cwd();
+              const discoveryConfig = await resolveConfig(
+                scanCwd,
+                resolvedTarget.target,
+                {},
+              );
+              const discoveredSkillFiles =
+                await discoverSkillFiles(discoveryConfig);
+              const effectiveScanOptions = withInferredSecurityScanSkills(
                 scanOptions,
+                discoveredSkillFiles,
+              );
+
+              const scanExitCode = await runAgentScanWithFeedback(
+                effectiveScanOptions,
                 resolvedTarget.target,
                 io,
                 'text',

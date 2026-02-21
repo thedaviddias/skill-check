@@ -4,9 +4,6 @@ Linter for agent skill files — validates SKILL.md files against the spec with 
 
 ![skill-check demo](docs/assets/skill-check-demo.gif)
 
-Regenerate with `pnpm run demo:readme` (source: `scripts/readme-demo.tape`).
-The demo runs `npx skill-check .` from repo root and auto-detects skills in tool directories such as `.agents`.
-
 ## Install
 
 ```bash
@@ -32,6 +29,7 @@ brew install skill-check
 |---|---|
 | `skill-check [path\|github-url]` | Shorthand for `skill-check check [path\|github-url]` |
 | `skill-check check [path\|github-url]` | Run validation (and optional security scan) |
+| `skill-check split-body [path]` | Preview/apply section-based body split into `references/*.md` |
 | `skill-check new <name>` | Scaffold a new skill directory with SKILL.md template |
 | `skill-check watch [path]` | Watch local paths for changes and re-run validation on save |
 | `skill-check diff <a> <b>` | Compare diagnostics between two skill directories |
@@ -48,6 +46,8 @@ brew install skill-check
 | `--fix --interactive` | Prompt before applying each fix (TTY only) |
 | `--baseline <path>` | Compare against a previous JSON run and show new/fixed counts |
 | `--format <fmt>` | Output format (see below) |
+| `--share` | Render a share card (text format only) |
+| `--share-out <path>` | Save a share image file (default: `./skill-check-share.png`) |
 | `--no-open` | Skip auto-opening HTML reports |
 | `--no-security-scan` | Skip the security scan |
 | `--strict` | Treat warnings as errors |
@@ -195,6 +195,15 @@ Use GitHub annotations in CI:
 npx skill-check check . --format github --no-security-scan
 ```
 
+Generate a screenshot-friendly social summary card:
+
+```bash
+npx skill-check https://github.com/thedaviddias/skill-check --share --no-security-scan
+```
+
+By default this also writes `skill-check-share.png` in your current directory.
+Set a custom output path with `--share-out path/to/card.png`.
+
 Hard-block dependency installs:
 
 ```bash
@@ -236,6 +245,30 @@ Remote URL scanning behavior:
 Rules requiring human intent (content quality, max-length trimming, broken links, or oversized bodies) remain manual and are reported after fixes are applied.
 
 Use `--fix --interactive` for per-diagnostic approval prompts (requires TTY).
+
+## Split Oversized Skill Bodies
+
+When `body.max_lines` fails, use `split-body` to extract `##` sections into `references/*.md`.
+
+Preview first (no writes):
+
+```bash
+npx skill-check split-body <skill-dir-or-file>
+```
+
+Apply changes:
+
+```bash
+npx skill-check split-body <skill-dir-or-file> --write
+```
+
+Notes:
+
+- Split is deterministic and section-based (`##` headings).
+- If a long body has no `##` headings, the command reports a blocked plan and explains what to add.
+- `split-body` is local-path only (no GitHub URL mutation flow in v1).
+- After writing, run `npx skill-check check <skill-dir-or-file> --no-security-scan`.
+- For editorial cleanup, use `docs/skills/split-into-references/SKILL.md` or [the published copy](https://github.com/thedaviddias/skill-check/blob/main/docs/skills/split-into-references/SKILL.md).
 
 ## GitHub Action
 

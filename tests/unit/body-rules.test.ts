@@ -56,6 +56,10 @@ describe('body.max_lines', () => {
     expect(findings).toHaveLength(1);
     expect(findings[0]?.message).toContain('exceeds max');
     expect(findings[0]?.suggestion).toBeTruthy();
+    expect(findings[0]?.suggestion).toContain('split-body');
+    expect(findings[0]?.suggestion).toContain(
+      'docs/skills/split-into-references/SKILL.md',
+    );
   });
 });
 

@@ -31,6 +31,8 @@ jobs:
     needs: test
     permissions:
       contents: write
+      issues: write
+      pull-requests: write
       id-token: write
     steps:
       - uses: actions/checkout@v6
@@ -40,12 +42,11 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version-file: .nvmrc
-          # DO NOT set registry-url — it conflicts with semantic-release's npm auth
           cache: pnpm
+      - run: npm install -g npm@latest
       - run: pnpm install --frozen-lockfile
       - run: pnpm run build
       - name: Release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Trusted Publishing uses OIDC — no NPM_TOKEN needed
         run: npx semantic-release

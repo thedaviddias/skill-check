@@ -2,6 +2,7 @@ import pc from 'picocolors';
 
 export type ValidationStatus = 'PASS' | 'WARN' | 'FAIL';
 export type SecurityStatus = 'PASS' | 'FAIL' | 'SKIPPED';
+export type ConclusionCardMode = 'default' | 'share';
 
 export interface ConclusionCardInput {
   skillCount: number;
@@ -14,6 +15,7 @@ export interface ConclusionCardInput {
   elapsedMs: number;
   runCommand?: string;
   title?: string;
+  mode?: ConclusionCardMode;
 }
 
 export interface ConclusionCardRenderResult {
@@ -28,6 +30,7 @@ interface FramedLine {
 
 const SCORE_BAR_WIDTH = 30;
 const RUN_COMMAND_PREVIEW_LIMIT = 56;
+const SHARE_CARD_MIN_WIDTH = 74;
 
 function createLine(plainText: string, renderedText = plainText): FramedLine {
   return { plainText, renderedText };
@@ -61,16 +64,20 @@ function formatElapsed(elapsedMs: number): string {
   return `${(elapsedMs / 1000).toFixed(1)}s`;
 }
 
-function renderScoreBar(score: number | null): FramedLine {
+function renderScoreBar(
+  score: number | null,
+  mode: ConclusionCardMode = 'default',
+): FramedLine {
+  const emptyChar = mode === 'share' ? '·' : '░';
   if (score === null) {
-    const empty = '░'.repeat(SCORE_BAR_WIDTH);
+    const empty = emptyChar.repeat(SCORE_BAR_WIDTH);
     return createLine(empty, pc.dim(empty));
   }
 
   const filledCount = Math.round((score / 100) * SCORE_BAR_WIDTH);
   const emptyCount = SCORE_BAR_WIDTH - filledCount;
   const filled = '█'.repeat(filledCount);
-  const empty = '░'.repeat(emptyCount);
+  const empty = emptyChar.repeat(emptyCount);
   return createLine(
     `${filled}${empty}`,
     `${colorizeByScore(score, filled)}${pc.dim(empty)}`,
@@ -89,7 +96,7 @@ function renderSecurityStatus(status: SecurityStatus): string {
   return pc.yellow(status);
 }
 
-function truncateMiddle(
+function truncateRunCommand(
   value: string,
   maxLength: number,
 ): { text: string; truncated: boolean } {
@@ -101,10 +108,8 @@ function truncateMiddle(
     return { text: '…', truncated: true };
   }
 
-  const leftSize = Math.ceil((maxLength - 1) / 2);
-  const rightSize = Math.floor((maxLength - 1) / 2);
   return {
-    text: `${value.slice(0, leftSize)}…${value.slice(value.length - rightSize)}`,
+    text: `${value.slice(0, maxLength - 1)}…`,
     truncated: true,
   };
 }
@@ -112,6 +117,7 @@ function truncateMiddle(
 export function renderConclusionCard(
   input: ConclusionCardInput,
 ): ConclusionCardRenderResult {
+  const mode = input.mode ?? 'default';
   const scoreValue =
     input.overallScore === null
       ? '--'
@@ -119,7 +125,7 @@ export function renderConclusionCard(
   const label = scoreLabel(input.overallScore);
   const scoreLinePlain = `${scoreValue} / 100  ${label}`;
   const scoreLineRendered = `${colorizeByScore(input.overallScore, scoreValue)} / 100  ${colorizeByScore(input.overallScore, label)}`;
-  const scoreBar = renderScoreBar(input.overallScore);
+  const scoreBar = renderScoreBar(input.overallScore, mode);
 
   const validationLinePlain = `validation ${input.validationStatus} | security ${input.securityStatus}`;
   const validationLineRendered = `${pc.bold('validation')} ${renderValidationStatus(input.validationStatus)} ${pc.dim('|')} ${pc.bold('security')} ${renderSecurityStatus(input.securityStatus)}`;
@@ -141,7 +147,10 @@ export function renderConclusionCard(
   let runCommandPreview: string | undefined;
   let runCommandWasTruncated = false;
   if (input.runCommand) {
-    const preview = truncateMiddle(input.runCommand, RUN_COMMAND_PREVIEW_LIMIT);
+    const preview = truncateRunCommand(
+      input.runCommand,
+      RUN_COMMAND_PREVIEW_LIMIT,
+    );
     runCommandPreview = preview.text;
     runCommandWasTruncated = preview.truncated;
     if (runCommandWasTruncated) {
@@ -149,12 +158,23 @@ export function renderConclusionCard(
     }
   }
 
-  const lines: FramedLine[] = [
-    createLine('   .---.', pc.cyan('   .---.')),
-    createLine('  / ✓ \\', pc.cyan('  / ✓ \\')),
-    createLine('  \\___/', pc.cyan('  \\___/')),
-    createLine(title, `${pc.bold('skill-check')} ${pc.dim('cli')}`),
-  ];
+  const lines: FramedLine[] = [];
+  if (mode === 'share') {
+    lines.push(
+      createLine(title, `${pc.bold(pc.cyan('skill-check'))} ${pc.bold('cli')}`),
+      createLine(''),
+    );
+  } else {
+    lines.push(
+      createLine('  .--------.', pc.cyan('  .--------.')),
+      createLine('  | skill  |', pc.cyan('  | skill  |')),
+      createLine('  | check  |', pc.cyan('  | check  |')),
+      createLine("  '--------'", pc.cyan("  '--------'")),
+      createLine(''),
+      createLine(title, `${pc.bold('skill-check')} ${pc.dim('cli')}`),
+      createLine(''),
+    );
+  }
 
   if (runCommandPreview) {
     lines.push(
@@ -179,18 +199,45 @@ export function renderConclusionCard(
     createLine(validationLinePlain, validationLineRendered),
     createLine(countsLinePlain, countsLineRendered),
   );
-
-  const width = Math.max(...lines.map((line) => line.plainText.length));
-  const border = '-'.repeat(width + 2);
-  const output: string[] = [`+${border}+`];
-
-  for (const line of lines) {
-    output.push(padLine(line, width));
+  if (mode === 'share') {
+    lines.push(
+      createLine(''),
+      createLine(
+        'try it: npx skill-check <path-or-github-url>',
+        `${pc.bold('try it:')} ${pc.cyan('npx skill-check <path-or-github-url>')}`,
+      ),
+      createLine(
+        'npm: https://www.npmjs.com/package/skill-check',
+        `${pc.bold('npm:')} ${pc.dim('https://www.npmjs.com/package/skill-check')}`,
+      ),
+    );
   }
 
-  output.push(`+${border}+`);
+  const width = Math.max(
+    mode === 'share' ? SHARE_CARD_MIN_WIDTH : 0,
+    ...lines.map((line) => line.plainText.length),
+  );
+
+  let card: string;
+  if (mode === 'share') {
+    card = lines
+      .map((line) => {
+        const trailing = ' '.repeat(Math.max(0, width - line.plainText.length));
+        return `${line.renderedText}${trailing}`;
+      })
+      .join('\n');
+  } else {
+    const border = '-'.repeat(width + 2);
+    const output: string[] = [`+${border}+`];
+    for (const line of lines) {
+      output.push(padLine(line, width));
+    }
+    output.push(`+${border}+`);
+    card = output.join('\n');
+  }
+
   return {
-    card: output.join('\n'),
+    card,
     fullCommandPlain,
   };
 }

@@ -1,6 +1,7 @@
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import {
+  deriveAgentScanSkillRoots,
   isValidAgentScanRunner,
   resolveAgentScanInvocation,
 } from '../../src/core/agent-scan.js';
@@ -66,5 +67,38 @@ describe('security scan integration', () => {
     );
 
     expect(invocation.command).toBe('mcp-scan');
+  });
+
+  it('derives skills roots from discovered SKILL.md files', () => {
+    const roots = deriveAgentScanSkillRoots([
+      '/tmp/repo/.agents/skills/my-skill/SKILL.md',
+      '/tmp/repo/.agents/skills/other-skill/SKILL.md',
+      '/tmp/repo/global/skills/x/SKILL.md',
+    ]);
+
+    expect(roots).toEqual([
+      '/tmp/repo/.agents/skills',
+      '/tmp/repo/global/skills',
+    ]);
+  });
+
+  it('falls back to skill directory when parent is not named skills', () => {
+    const roots = deriveAgentScanSkillRoots([
+      '/tmp/repo/custom/my-skill/SKILL.md',
+    ]);
+
+    expect(roots).toEqual(['/tmp/repo/custom/my-skill']);
+  });
+
+  it('orders inferred roots by discovered skill count (highest first)', () => {
+    const roots = deriveAgentScanSkillRoots([
+      '/tmp/repo/docs/skills/a/SKILL.md',
+      '/tmp/repo/.agents/skills/a/SKILL.md',
+      '/tmp/repo/.agents/skills/b/SKILL.md',
+      '/tmp/repo/.agents/skills/c/SKILL.md',
+    ]);
+
+    expect(roots[0]).toBe('/tmp/repo/.agents/skills');
+    expect(roots[1]).toBe('/tmp/repo/docs/skills');
   });
 });

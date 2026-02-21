@@ -165,6 +165,31 @@ describe('renderConclusionCard', () => {
     expect(output).toContain('full command below');
     expect(output).toContain('run:');
     expect(output).toContain('…');
+    expect(output).toContain('run: npx skill-check check https://github.com/');
     expect(rendered.fullCommandPlain).toBe(longCommand);
+  });
+
+  it('renders share card mode copy', () => {
+    const output = stripAnsi(
+      renderConclusionCard({
+        skillCount: 10,
+        errorCount: 8,
+        warningCount: 0,
+        affectedFileCount: 8,
+        overallScore: 84,
+        validationStatus: 'FAIL',
+        securityStatus: 'PASS',
+        elapsedMs: 3300,
+        runCommand:
+          'npx skill-check https://github.com/CloudAI-X/threejs-skills',
+        mode: 'share',
+      }).card,
+    );
+
+    expect(output).toContain('skill-check cli');
+    expect(output).toContain('try it: npx skill-check <path-or-github-url>');
+    expect(output).toContain('npm: https://www.npmjs.com/package/skill-check');
+    expect(output).toContain('validation FAIL | security PASS');
+    expect(output).toContain('✖ 8 errors');
   });
 });

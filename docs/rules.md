@@ -24,6 +24,27 @@ Run `skill-check rules <id>` for detail on any specific rule.
 
 All rules emit actionable `suggestion` text alongside diagnostic messages.
 
+## `body.max_lines` Remediation
+
+When `body.max_lines` is reported, use the built-in split workflow:
+
+```bash
+# preview plan (no writes)
+npx skill-check split-body <skill-dir-or-file>
+
+# apply split
+npx skill-check split-body <skill-dir-or-file> --write
+```
+
+How it works:
+
+- Triggered only when body lines exceed the configured max.
+- Extracts each major `##` section (including nested `###`) into `references/<slug>.md`.
+- Rewrites the body to a compact `## References` index with links.
+- If the body has no `##` headings, result is blocked with guidance to add headings first.
+
+For editorial improvement after deterministic split, use `docs/skills/split-into-references/SKILL.md` or [the published copy](https://github.com/thedaviddias/skill-check/blob/main/docs/skills/split-into-references/SKILL.md).
+
 ## Auto-fix Support (`check --fix`)
 
 Auto-fixable rules can be applied automatically or interactively:

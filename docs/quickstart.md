@@ -27,6 +27,22 @@ Smoke runs a real security scan by default.
 Smoke also runs `check --fix` on a temp copy of `fixtures/fail/multi-mixed` and then verifies it passes.
 Default smoke security runner is `pipx`.
 
+## Split Oversized SKILL Bodies
+
+When `body.max_lines` fails, run the deterministic split workflow:
+
+```bash
+# preview only (default)
+npx skill-check split-body <skill-dir-or-file>
+
+# apply updates to SKILL.md + references/*.md
+npx skill-check split-body <skill-dir-or-file> --write
+```
+
+`split-body` extracts major `##` sections into `references/*.md` and rewrites the main body into a compact references index.
+If a long body has no `##` section headings, the plan is reported as blocked until headings are added.
+Use `docs/skills/split-into-references/SKILL.md` for post-split editorial cleanup.
+
 ## README Demo Animation
 
 For maintainers, regenerate the README animation with:
@@ -87,6 +103,15 @@ npx skill-check https://github.com/thedaviddias/skill-check/tree/main/skills --n
 Remote URL runs show clone/resolve progress on stderr (spinner in TTY, `[remote]` lines in CI/non-TTY).
 
 `--fix` is local-only for now when using GitHub URLs.
+
+Generate a screenshot-friendly share card:
+
+```bash
+npx skill-check https://github.com/thedaviddias/skill-check --share --no-security-scan
+```
+
+This writes `./skill-check-share.png` by default.
+Use `--share-out reports/skill-check-share.png` to choose a different path.
 
 Apply safe automatic fixes:
 

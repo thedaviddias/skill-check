@@ -16,7 +16,10 @@ export const bodyRules: RuleDefinition[] = [
       return [
         {
           message: `body lines ${lines} exceeds max ${max}`,
-          suggestion: `Reduce body to ${max} lines or fewer.`,
+          suggestion:
+            `Run "npx skill-check split-body <skill-dir-or-file>" to preview section-based extraction into references/*.md, then re-run with "--write". ` +
+            `For editorial cleanup, use docs/skills/split-into-references/SKILL.md ` +
+            `(https://github.com/thedaviddias/skill-check/blob/main/docs/skills/split-into-references/SKILL.md).`,
         },
       ];
     },

@@ -32,6 +32,46 @@ function copyFixtureToTemp(relativeFixturePath: string): string {
   return destination;
 }
 
+function createOversizedSectionedFixture(): string {
+  const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'skill-check-split-'));
+  const skillDir = path.join(tempDir, 'global/skills/long-skill');
+  fs.mkdirSync(skillDir, { recursive: true });
+  const body = [
+    '# long-skill',
+    '',
+    'Use when large instructions should be modularized.',
+    '',
+    '## Setup',
+    'Step 1',
+    'Step 2',
+    'Step 3',
+    '',
+    '## Runtime Notes',
+    'Note 1',
+    'Note 2',
+    'Note 3',
+    '',
+    '## Validation',
+    'Check A',
+    'Check B',
+    'Check C',
+    '',
+  ].join('\n');
+
+  const content = [
+    '---',
+    'name: long-skill',
+    'description: Use when a large skill body should be split into references docs.',
+    '---',
+    '',
+    body,
+    '',
+  ].join('\n');
+
+  fs.writeFileSync(path.join(skillDir, 'SKILL.md'), content, 'utf8');
+  return tempDir;
+}
+
 describe('CLI integration', () => {
   beforeEach(() => {
     process.chdir(path.resolve('.'));
@@ -58,6 +98,18 @@ describe('CLI integration', () => {
     expect(output).toContain('run: npx skill-check');
     expect(output).not.toContain('run: npx skill-check check');
     expect(output).toContain(`npx skill-check ${target} --no-security-scan`);
+  });
+
+  it('keeps relative local target paths working', async () => {
+    const { io, stdout } = createIO();
+    const code = await runCli(
+      ['check', 'fixtures/pass/basic', '--no-security-scan'],
+      io,
+    );
+    expect(code).toBe(0);
+    const output = stripAnsi(stdout.join(''));
+    expect(output).toContain('1 skill');
+    expect(output).toContain('validation PASS');
   });
 
   it('returns 0 for valid multi-skill fixtures', async () => {
@@ -156,6 +208,97 @@ describe('CLI integration', () => {
     expect(output).toContain('Auto-fix:');
     expect(output).toContain('unsupported=');
     expect(output).toContain('body.max_lines');
+  });
+
+  it('shows split-body preview without writing files', async () => {
+    const fixtureDir = createOversizedSectionedFixture();
+    const { io, stdout } = createIO();
+    const code = await runCli(
+      ['split-body', fixtureDir, '--max-body-lines', '10'],
+      io,
+    );
+
+    expect(code).toBe(0);
+    const output = stripAnsi(stdout.join(''));
+    expect(output).toContain('split-body preview');
+    expect(output).toContain('[PLAN]');
+    expect(output).toContain('would create');
+    expect(
+      fs.existsSync(
+        path.join(fixtureDir, 'global/skills/long-skill/references/setup.md'),
+      ),
+    ).toBe(false);
+
+    fs.rmSync(fixtureDir, { recursive: true, force: true });
+  });
+
+  it('applies split-body and resolves body.max_lines diagnostics', async () => {
+    const fixtureDir = createOversizedSectionedFixture();
+    const skillRoot = path.join(fixtureDir, 'global/skills/long-skill');
+
+    const { io: beforeIo, stdout: beforeOut } = createIO();
+    const beforeCode = await runCli(
+      ['check', fixtureDir, '--max-body-lines', '15', '--no-security-scan'],
+      beforeIo,
+    );
+    expect(beforeCode).toBe(1);
+    expect(stripAnsi(beforeOut.join(''))).toContain('body.max_lines');
+
+    const { io: splitIo, stdout: splitOut } = createIO();
+    const splitCode = await runCli(
+      ['split-body', fixtureDir, '--write', '--max-body-lines', '15'],
+      splitIo,
+    );
+    expect(splitCode).toBe(0);
+    const splitOutput = stripAnsi(splitOut.join(''));
+    expect(splitOutput).toContain('split-body apply');
+    expect(splitOutput).toContain('create (references/setup.md');
+
+    expect(fs.existsSync(path.join(skillRoot, 'references/setup.md'))).toBe(
+      true,
+    );
+    expect(
+      fs.existsSync(path.join(skillRoot, 'references/runtime-notes.md')),
+    ).toBe(true);
+    expect(
+      fs.existsSync(path.join(skillRoot, 'references/validation.md')),
+    ).toBe(true);
+    const rewrittenSkill = fs.readFileSync(
+      path.join(skillRoot, 'SKILL.md'),
+      'utf8',
+    );
+    expect(rewrittenSkill).toContain('## References');
+
+    const { io: afterIo, stdout: afterOut } = createIO();
+    const afterCode = await runCli(
+      ['check', fixtureDir, '--max-body-lines', '15', '--no-security-scan'],
+      afterIo,
+    );
+    expect(afterCode).toBe(0);
+    expect(stripAnsi(afterOut.join(''))).not.toContain('body.max_lines');
+
+    const { io: shorthandIo, stdout: shorthandOut } = createIO();
+    const shorthandCode = await runCli(
+      [fixtureDir, '--max-body-lines', '15', '--no-security-scan'],
+      shorthandIo,
+    );
+    expect(shorthandCode).toBe(0);
+    expect(stripAnsi(shorthandOut.join(''))).not.toContain('body.max_lines');
+
+    fs.rmSync(fixtureDir, { recursive: true, force: true });
+  });
+
+  it('returns blocked result for oversized body without H2 sections', async () => {
+    const { io, stdout } = createIO();
+    const code = await runCli(
+      ['split-body', 'fixtures/fail/over-body', '--max-body-lines', '10'],
+      io,
+    );
+
+    expect(code).toBe(2);
+    const output = stripAnsi(stdout.join(''));
+    expect(output).toContain('[BLOCKED]');
+    expect(output).toContain('Add at least one ## section heading');
   });
 
   it('returns 2 for missing config', async () => {
@@ -310,6 +453,60 @@ describe('CLI integration', () => {
       io,
     );
     expect(code).toBe(0);
+  });
+
+  it('renders social share card with --share', async () => {
+    const target = path.join(fixturesRoot, 'pass/basic');
+    const shareDir = fs.mkdtempSync(
+      path.join(os.tmpdir(), 'skill-check-share-'),
+    );
+    const sharePath = path.join(shareDir, 'card.png');
+    const { io, stdout } = createIO();
+    const code = await runCli(
+      [
+        'check',
+        target,
+        '--share',
+        '--share-out',
+        sharePath,
+        '--no-security-scan',
+      ],
+      io,
+    );
+
+    expect(code).toBe(0);
+    const output = stripAnsi(stdout.join(''));
+    expect(output).toContain('skill-check cli');
+    expect(output).toContain('run: npx skill-check check');
+    expect(output).toContain('try it: npx skill-check <path-or-github-url>');
+    expect(output).toContain('npm: https://www.npmjs.com/package/skill-check');
+    expect(output).toContain(`Share image: ${sharePath}`);
+    expect(output).not.toContain('SKILL-CHECK VALIDATION REPORT');
+    expect(fs.existsSync(sharePath)).toBe(true);
+  });
+
+  it('rejects --share with non-text format', async () => {
+    const target = path.join(fixturesRoot, 'pass/basic');
+    const { io, stderr } = createIO();
+    const code = await runCli(
+      ['check', target, '--share', '--format', 'json', '--no-security-scan'],
+      io,
+    );
+
+    expect(code).toBe(2);
+    expect(stderr.join('')).toContain('--share requires text output format.');
+  });
+
+  it('rejects --share-out without --share', async () => {
+    const target = path.join(fixturesRoot, 'pass/basic');
+    const { io, stderr } = createIO();
+    const code = await runCli(
+      ['check', target, '--share-out', '/tmp/card.svg', '--no-security-scan'],
+      io,
+    );
+
+    expect(code).toBe(2);
+    expect(stderr.join('')).toContain('--share-out requires --share.');
   });
 
   it('returns 2 for conflicting install policy flags', async () => {

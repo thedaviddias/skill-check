@@ -52,8 +52,13 @@
     "url": "git+https://github.com/thedaviddias/skill-check.git"
   },
   "license": "MIT",
+  "publishConfig": {
+    "provenance": true,
+    "access": "public"
+  },
   "dependencies": {
     "@clack/prompts": "^1.0.1",
+    "@resvg/resvg-js": "^2.6.2",
     "boxen": "^8.0.1",
     "cli-table3": "^0.6.5",
     "commander": "^14.0.3",
@@ -68,8 +73,8 @@
     "@biomejs/biome": "^2.4.4",
     "@commitlint/config-conventional": "^20.4.2",
     "@semantic-release/changelog": "^6.0.3",
-    "@semantic-release/npm": "^13.1.4",
     "@semantic-release/git": "^10.0.1",
+    "@semantic-release/npm": "^13.1.4",
     "@types/node": "^25.3.0",
     "@vitest/coverage-v8": "^4.0.18",
     "commitlint": "^20.4.2",

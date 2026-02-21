@@ -20,6 +20,30 @@ export interface AgentScanInvocation {
   args: string[];
 }
 
+export function deriveAgentScanSkillRoots(skillFilePaths: string[]): string[] {
+  const rootCounts = new Map<string, number>();
+  for (const skillFilePath of skillFilePaths) {
+    const absoluteSkillFilePath = path.resolve(skillFilePath);
+    const skillDir = path.dirname(absoluteSkillFilePath);
+    const maybeSkillsRoot = path.dirname(skillDir);
+    const selectedRoot =
+      path.basename(maybeSkillsRoot).toLowerCase() === 'skills'
+        ? maybeSkillsRoot
+        : skillDir;
+
+    rootCounts.set(selectedRoot, (rootCounts.get(selectedRoot) ?? 0) + 1);
+  }
+
+  return Array.from(rootCounts.entries())
+    .sort((a, b) => {
+      if (b[1] !== a[1]) {
+        return b[1] - a[1];
+      }
+      return a[0].localeCompare(b[0]);
+    })
+    .map(([root]) => root);
+}
+
 function normalizePaths(
   cwd: string,
   values: string[] | undefined,
