@@ -1,0 +1,94 @@
+name: contributors
+
+on:
+  pull_request_target:
+    types: [closed]
+  workflow_dispatch:
+    inputs:
+      username:
+        description: GitHub username to add (without @)
+        required: true
+        type: string
+      contribution:
+        description: Contribution type
+        required: false
+        default: doc
+        type: choice
+        options:
+          - doc
+          - code
+          - design
+          - ideas
+          - question
+          - test
+          - infra
+          - maintenance
+
+permissions:
+  contents: write
+
+jobs:
+  add-contributor:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request_target' &&
+       github.event.pull_request.merged == true &&
+       github.event.pull_request.user.login != 'github-actions[bot]')
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout default branch
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Resolve contributor metadata
+        id: contributor
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          INPUT_USERNAME: ${{ github.event.inputs.username }}
+          INPUT_CONTRIBUTION: ${{ github.event.inputs.contribution }}
+        run: |
+          set -euo pipefail
+
+          if [[ "${EVENT_NAME}" == "workflow_dispatch" ]]; then
+            username="${INPUT_USERNAME}"
+            contribution="${INPUT_CONTRIBUTION:-doc}"
+          else
+            username="${PR_AUTHOR}"
+            contribution="code"
+          fi
+
+          username="${username#@}"
+
+          if [[ -z "${username}" ]]; then
+            echo "Missing contributor username" >&2
+            exit 1
+          fi
+
+          echo "username=${username}" >> "${GITHUB_OUTPUT}"
+          echo "contribution=${contribution}" >> "${GITHUB_OUTPUT}"
+
+      - name: Update contributors table
+        run: |
+          npx --yes all-contributors-cli add "${{ steps.contributor.outputs.username }}" "${{ steps.contributor.outputs.contribution }}"
+          npx --yes all-contributors-cli generate
+
+      - name: Commit and push
+        run: |
+          if git diff --quiet -- README.md .all-contributorsrc; then
+            echo "No contributor changes to commit"
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add README.md .all-contributorsrc
+          git commit -m "docs: add @${{ steps.contributor.outputs.username }} as contributor [skip ci]"
+          git push origin HEAD:main

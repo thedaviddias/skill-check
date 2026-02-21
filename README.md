@@ -1,14 +1,29 @@
 # skill-check
 
-Linter for agent skill files — validates SKILL.md files against the spec with extensible custom rules.
+[![npm version](https://img.shields.io/npm/v/skill-check)](https://www.npmjs.com/package/skill-check)
+[![CI](https://github.com/thedaviddias/skill-check/actions/workflows/ci.yml/badge.svg)](https://github.com/thedaviddias/skill-check/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/license-MIT-yellow.svg)](LICENSE)
+
+`skill-check` validates agent skills with clear diagnostics, auto-fix support, quality scoring, and optional security scanning.
 
 ![skill-check demo](docs/assets/skill-check-demo.gif)
 
-## Install
+## Quick Start
 
 ```bash
 npx skill-check .
 ```
+
+## Features
+
+- Validates `SKILL.md` structure, frontmatter, description quality, body limits, and local references.
+- Scores skills from 0-100 so teams can track quality improvements over time.
+- Supports deterministic `--fix` for safe formatting and metadata corrections.
+- Runs an integrated security scan (`agent-scan`) in the same CLI pipeline.
+- Accepts local paths and GitHub URLs (`https://github.com/<owner>/<repo>`).
+- Exports text, JSON, SARIF, HTML, and GitHub annotation formats.
+
+## Install Options
 
 Global install via curl:
 
@@ -102,7 +117,7 @@ npx skill-check check . --baseline baseline.json --no-security-scan
 
 Output shows how many diagnostics are new, fixed, or unchanged.
 
-## Quick Start
+## Development Quick Start
 
 ```bash
 pnpm install
@@ -197,7 +212,7 @@ Use GitHub annotations in CI:
 npx skill-check check . --format github --no-security-scan
 ```
 
-Generate a screenshot-friendly social summary card:
+Generate a screenshot-friendly share card:
 
 ```bash
 npx skill-check https://github.com/thedaviddias/skill-check --share --no-security-scan
@@ -419,3 +434,31 @@ To simulate a release locally (without publishing): `pnpm run release:dry-run`. 
 - `docs/rules.md`
 - `docs/plugins.md`
 - `docs/migration-from-agent-forge.md`
+
+## Contributing
+
+Contributions are welcome. Please read [`CONTRIBUTING.md`](CONTRIBUTING.md) before opening a pull request.
+
+## Contributors
+
+Thanks goes to these people ([emoji key](https://allcontributors.org/docs/en/emoji-key)):
+
+<!-- ALL-CONTRIBUTORS-LIST:START - Do not remove or modify this section -->
+<!-- prettier-ignore-start -->
+<!-- markdownlint-disable -->
+<table>
+  <tbody>
+    <tr>
+      <td align="center"><a href="https://github.com/thedaviddias"><img src="https://avatars.githubusercontent.com/u/5763274?v=4?s=100" width="100px;" alt="thedaviddias"/><br /><sub><b>David Dias</b></sub></a><br /><a href="https://github.com/thedaviddias/skill-check/commits?author=thedaviddias" title="Code">💻</a> <a href="https://github.com/thedaviddias/skill-check/commits?author=thedaviddias" title="Documentation">📖</a> <a href="#maintenance-thedaviddias" title="Maintenance">🚧</a></td>
+    </tr>
+  </tbody>
+</table>
+<!-- markdownlint-restore -->
+<!-- prettier-ignore-end -->
+<!-- ALL-CONTRIBUTORS-LIST:END -->
+
+This project follows the [all-contributors](https://allcontributors.org) specification.
+
+## License
+
+MIT - see [`LICENSE`](LICENSE).
