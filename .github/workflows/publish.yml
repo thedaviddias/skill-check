@@ -40,13 +40,12 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version-file: .nvmrc
-          registry-url: "https://registry.npmjs.org"
+          # DO NOT set registry-url — it conflicts with semantic-release's npm auth
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm run build
       - name: Release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # OIDC: leave NPM_TOKEN unset once Trusted Publisher is set for this package on npm
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+          # Trusted Publishing uses OIDC — no NPM_TOKEN needed
         run: npx semantic-release

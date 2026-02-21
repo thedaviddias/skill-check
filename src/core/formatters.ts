@@ -1,7 +1,11 @@
-import boxen from 'boxen';
 import Table from 'cli-table3';
 import pc from 'picocolors';
 import type { AnalysisResult, Diagnostic } from '../types.js';
+import {
+  renderConclusionCard,
+  type SecurityStatus,
+  type ValidationStatus,
+} from './conclusion-card.js';
 import type { SkillScore } from './quality-score.js';
 
 function groupByFile(diagnostics: Diagnostic[]): Map<string, Diagnostic[]> {
@@ -92,39 +96,6 @@ function renderOverviewTable(
   return table.toString();
 }
 
-function renderSummaryPanel(result: AnalysisResult): string {
-  const status =
-    result.summary.errorCount > 0
-      ? pc.red(pc.bold('FAIL'))
-      : result.summary.warningCount > 0
-        ? pc.yellow(pc.bold('WARN'))
-        : pc.green(pc.bold('PASS'));
-
-  return boxen(
-    [
-      `${pc.bold('Status')}    ${status}`,
-      `${pc.bold('Skills')}    ${pc.cyan(String(result.summary.skillCount))}`,
-      `${pc.bold('Errors')}    ${pc.red(String(result.summary.errorCount))}`,
-      `${pc.bold('Warnings')}  ${pc.yellow(String(result.summary.warningCount))}`,
-    ].join('\n'),
-    {
-      borderColor:
-        result.summary.errorCount > 0
-          ? 'red'
-          : result.summary.warningCount > 0
-            ? 'yellow'
-            : 'green',
-      borderStyle: 'classic',
-      padding: {
-        top: 0,
-        right: 1,
-        bottom: 0,
-        left: 1,
-      },
-    },
-  );
-}
-
 function renderScoreBar(score: number): string {
   const color = score >= 80 ? pc.green : score >= 50 ? pc.yellow : pc.red;
   const filled = Math.round(score / 5);
@@ -132,9 +103,31 @@ function renderScoreBar(score: number): string {
   return `${color('█'.repeat(filled))}${pc.dim('░'.repeat(empty))} ${color(String(score))}`;
 }
 
+function resolveValidationStatus(result: AnalysisResult): ValidationStatus {
+  if (result.summary.errorCount > 0) return 'FAIL';
+  if (result.summary.warningCount > 0) return 'WARN';
+  return 'PASS';
+}
+
+function computeOverallScore(scores: SkillScore[] | undefined): number | null {
+  if (!scores || scores.length === 0) return null;
+  const total = scores.reduce((sum, score) => sum + score.score, 0);
+  return Math.round(total / scores.length);
+}
+
+export interface RenderTextOptions {
+  includeConclusion?: boolean;
+  securityStatus?: SecurityStatus;
+  elapsedMs?: number;
+  affectedFileCount?: number;
+  runCommand?: string;
+  title?: string;
+}
+
 export function renderText(
   result: AnalysisResult,
   scores?: SkillScore[],
+  options: RenderTextOptions = {},
 ): string {
   const lines: string[] = [];
   const grouped = groupByFile(result.diagnostics);
@@ -188,19 +181,26 @@ export function renderText(
     lines.push('');
   }
 
-  lines.push(pc.dim(renderDivider('-')));
-  lines.push(renderSummaryPanel(result));
-  lines.push('');
-  const statusWord =
-    result.summary.errorCount > 0
-      ? pc.red('FAIL')
-      : result.summary.warningCount > 0
-        ? pc.yellow('WARN')
-        : pc.green('PASS');
-  lines.push(
-    `Summary: skills=${pc.cyan(String(result.summary.skillCount))} errors=${pc.red(String(result.summary.errorCount))} warnings=${pc.yellow(String(result.summary.warningCount))} status=${statusWord}`,
-  );
-  lines.push(pc.dim(renderDivider('-')));
+  if (options.includeConclusion !== false) {
+    const conclusion = renderConclusionCard({
+      skillCount: result.summary.skillCount,
+      errorCount: result.summary.errorCount,
+      warningCount: result.summary.warningCount,
+      affectedFileCount: options.affectedFileCount ?? grouped.size,
+      overallScore: computeOverallScore(scores),
+      validationStatus: resolveValidationStatus(result),
+      securityStatus: options.securityStatus ?? 'SKIPPED',
+      elapsedMs: options.elapsedMs ?? 0,
+      runCommand: options.runCommand,
+      title: options.title,
+    });
+
+    lines.push(pc.dim(renderDivider('-')));
+    lines.push(conclusion.card);
+    if (conclusion.fullCommandPlain) {
+      lines.push(conclusion.fullCommandPlain);
+    }
+  }
 
   return `${lines.join('\n').trimEnd()}\n`;
 }

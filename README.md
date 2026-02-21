@@ -30,14 +30,14 @@ brew install skill-check
 
 | Command | Description |
 |---|---|
-| `skill-check [path]` | Shorthand for `skill-check check [path]` |
-| `skill-check check [path]` | Run validation (and optional security scan) |
+| `skill-check [path\|github-url]` | Shorthand for `skill-check check [path\|github-url]` |
+| `skill-check check [path\|github-url]` | Run validation (and optional security scan) |
 | `skill-check new <name>` | Scaffold a new skill directory with SKILL.md template |
-| `skill-check watch [path]` | Watch for changes and re-run validation on save |
+| `skill-check watch [path]` | Watch local paths for changes and re-run validation on save |
 | `skill-check diff <a> <b>` | Compare diagnostics between two skill directories |
-| `skill-check report [path]` | Generate a markdown health report |
+| `skill-check report [path\|github-url]` | Generate a markdown health report |
 | `skill-check rules [id]` | List all rules, or show detail for a specific rule |
-| `skill-check security-scan [path]` | Run security scan via agent-scan (mcp-scan) |
+| `skill-check security-scan [path\|github-url]` | Run security scan via agent-scan (mcp-scan) |
 | `skill-check init` | Create `skill-check.config.json` template |
 
 ### check options
@@ -68,7 +68,7 @@ brew install skill-check
 
 **View locally:** `npx skill-check . --format html` or open the file directly: `open skill-check-report.html` (macOS).
 
-The `text` formatter includes quality score bars per skill, colorized severity badges, and boxed summaries.
+The `text` formatter includes quality score bars per skill, colorized severity badges, and a share-friendly shield card with the exact runnable `npx skill-check ...` command (including GitHub URL targets when used).
 An ASCII CLI banner is shown in interactive text mode; set `SKILL_CHECK_NO_BANNER=1` to disable it.
 
 ## Quality Scores
@@ -200,6 +200,23 @@ Hard-block dependency installs:
 ```bash
 npx skill-check check . --no-installs
 ```
+
+## Remote GitHub URLs
+
+`skill-check` supports scanning GitHub repos directly without a manual clone:
+
+```bash
+npx skill-check https://github.com/thedaviddias/skill-check --no-security-scan
+npx skill-check https://github.com/thedaviddias/skill-check/tree/main/skills --no-security-scan
+```
+
+Remote URL scanning behavior:
+
+- Creates an ephemeral shallow clone (`git clone --depth 1`) in a temp directory.
+- Cleans up the checkout automatically after the command finishes.
+- Keeps security scan enabled by default (same as local path behavior).
+- Does not support `--fix` for URL targets (read-only workflow).
+- `watch` and `diff` are local-path only in this version.
 
 ## Auto-fix Coverage
 

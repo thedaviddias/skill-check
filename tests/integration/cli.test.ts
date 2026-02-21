@@ -38,21 +38,26 @@ describe('CLI integration', () => {
   });
 
   it('returns 0 for valid fixtures', async () => {
-    const { io } = createIO();
-    const code = await runCli(
-      ['check', path.join(fixturesRoot, 'pass/basic'), '--no-security-scan'],
-      io,
-    );
+    const target = path.join(fixturesRoot, 'pass/basic');
+    const { io, stdout } = createIO();
+    const code = await runCli(['check', target, '--no-security-scan'], io);
     expect(code).toBe(0);
+    const output = stripAnsi(stdout.join(''));
+    expect(output).toContain('run: npx skill-check check');
+    expect(output).toContain(
+      `npx skill-check check ${target} --no-security-scan`,
+    );
   });
 
   it('supports shorthand path invocation for check', async () => {
-    const { io } = createIO();
-    const code = await runCli(
-      [path.join(fixturesRoot, 'pass/basic'), '--no-security-scan'],
-      io,
-    );
+    const target = path.join(fixturesRoot, 'pass/basic');
+    const { io, stdout } = createIO();
+    const code = await runCli([target, '--no-security-scan'], io);
     expect(code).toBe(0);
+    const output = stripAnsi(stdout.join(''));
+    expect(output).toContain('run: npx skill-check');
+    expect(output).not.toContain('run: npx skill-check check');
+    expect(output).toContain(`npx skill-check ${target} --no-security-scan`);
   });
 
   it('returns 0 for valid multi-skill fixtures', async () => {
@@ -247,10 +252,11 @@ describe('CLI integration', () => {
     expect(output).toContain('fake-bad-skill/SKILL.md');
     expect(output).toContain('frontmatter.required');
     expect(output).toContain('frontmatter.name_slug_format');
-    expect(output).toContain('Summary: skills=3 errors=');
-    expect(output).toContain('status=');
-    expect(output).toContain('Validation:');
-    expect(output).toContain('Security scan:');
+    expect(output).toContain('skill-check cli');
+    expect(output).toContain('run: npx skill-check check');
+    expect(output).toContain('validation FAIL | security SKIPPED');
+    expect(output).toContain('✖ 3 errors');
+    expect(output).toContain('⚠ 0 warnings');
   });
 
   it('writes report with reportPath from config', async () => {

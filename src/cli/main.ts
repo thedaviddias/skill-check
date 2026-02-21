@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { performance } from 'node:perf_hooks';
 import { pathToFileURL } from 'node:url';
 import {
   cancel as clackCancel,
@@ -34,6 +35,11 @@ import {
   diffBaseline,
   loadBaseline,
 } from '../core/baseline.js';
+import {
+  renderConclusionCard,
+  type SecurityStatus,
+  type ValidationStatus,
+} from '../core/conclusion-card.js';
 import { resolveConfig } from '../core/config.js';
 import { detectDuplicates } from '../core/duplicates.js';
 import { CliError } from '../core/errors.js';
@@ -48,6 +54,10 @@ import { renderHtml } from '../core/html-report.js';
 import { selectFixableDiagnostics } from '../core/interactive-fix.js';
 import { openInBrowser } from '../core/open-browser.js';
 import { computeSkillScores } from '../core/quality-score.js';
+import {
+  isGitHubRepoUrl,
+  materializeRemoteTarget,
+} from '../core/remote-target.js';
 import { renderMarkdownReport } from '../core/report.js';
 import { toSarif } from '../core/sarif.js';
 import { coreRules } from '../rules/core/index.js';
@@ -202,6 +212,12 @@ interface CheckCommandOptions {
   interactive: boolean;
 }
 
+interface ResolvedCommandTarget {
+  target: string | undefined;
+  isRemote: boolean;
+  cleanup?: () => void;
+}
+
 function parseCommaSeparated(value: string): string[] {
   return value
     .split(',')
@@ -222,6 +238,26 @@ function normalizeRootCommandArgs(argv: string[]): string[] {
   return ['check', ...argv];
 }
 
+function shellQuoteArg(value: string): string {
+  if (value.length === 0) {
+    return "''";
+  }
+
+  if (/^[A-Za-z0-9_./:@%+=,-]+$/.test(value)) {
+    return value;
+  }
+
+  return `'${value.replace(/'/g, `'"'"'`)}'`;
+}
+
+function buildShareableRunCommand(args: string[]): string {
+  if (args.length === 0) {
+    return 'npx skill-check';
+  }
+
+  return `npx skill-check ${args.map(shellQuoteArg).join(' ')}`;
+}
+
 function normalizeCheckCommandOptions(
   raw: Record<string, unknown>,
 ): CheckCommandOptions {
@@ -229,6 +265,47 @@ function normalizeCheckCommandOptions(
     fix: raw.fix === true,
     interactive: raw.interactive === true,
   };
+}
+
+function resolveCommandTarget(
+  target: string | undefined,
+): ResolvedCommandTarget {
+  if (!target || !isGitHubRepoUrl(target)) {
+    return {
+      target,
+      isRemote: false,
+    };
+  }
+
+  const materialized = materializeRemoteTarget(target);
+  return {
+    target: materialized.path,
+    isRemote: true,
+    cleanup: materialized.cleanup,
+  };
+}
+
+async function withResolvedTarget<T>(
+  target: string | undefined,
+  run: (resolved: ResolvedCommandTarget) => Promise<T>,
+): Promise<T> {
+  const resolved = resolveCommandTarget(target);
+  try {
+    return await run(resolved);
+  } finally {
+    resolved.cleanup?.();
+  }
+}
+
+function assertLocalOnlyTarget(
+  target: string | undefined,
+  commandName: string,
+): void {
+  if (!target || !isGitHubRepoUrl(target)) return;
+  throw new CliError(
+    `${commandName} does not support GitHub URL targets yet. Clone locally and re-run ${commandName}.`,
+    2,
+  );
 }
 
 async function runInteractiveInit(
@@ -525,10 +602,35 @@ async function runAgentScanWithFeedback(
   }
 }
 
+function resolveValidationStatus(result: AnalysisResult): ValidationStatus {
+  if (result.summary.errorCount > 0) return 'FAIL';
+  if (result.summary.warningCount > 0) return 'WARN';
+  return 'PASS';
+}
+
+function resolveSecurityStatus(
+  enabled: boolean,
+  scanExitCode: number | undefined,
+): SecurityStatus {
+  if (!enabled) return 'SKIPPED';
+  return scanExitCode === 0 ? 'PASS' : 'FAIL';
+}
+
+function computeOverallScore(scores: { score: number }[]): number | null {
+  if (scores.length === 0) return null;
+  const total = scores.reduce((sum, score) => sum + score.score, 0);
+  return Math.round(total / scores.length);
+}
+
+function countAffectedFiles(diagnostics: Diagnostic[]): number {
+  return new Set(diagnostics.map((diagnostic) => diagnostic.file)).size;
+}
+
 export async function runCli(
   argv: string[],
   io: CliIO = defaultIO,
 ): Promise<number> {
+  const originalArgv = [...argv];
   const program = new Command();
   let finalExitCode = 0;
   let bannerRendered = false;
@@ -566,111 +668,238 @@ export async function runCli(
             target: string | undefined,
             rawOptions: Record<string, unknown>,
           ) => {
+            const checkStartedAt = performance.now();
+            const runCommand = buildShareableRunCommand(originalArgv);
             const options = normalizeCliOptions(rawOptions);
             const checkOptions = normalizeCheckCommandOptions(rawOptions);
             const scanOptions = normalizeAgentScanOptions(rawOptions);
-            const config = await resolveConfig(process.cwd(), target, options);
-            maybeRenderBanner(config.output.format);
-            let result = await runValidationPipeline(
-              process.cwd(),
-              config,
-              shouldUseInteractiveUi(io),
-            );
-            let fixSummary: AutoFixSummary | undefined;
-
-            if (checkOptions.fix) {
-              if (checkOptions.interactive && shouldUseInteractiveUi(io)) {
-                const { accepted, skipped } =
-                  await selectFixableDiagnostics(result);
-                if (accepted.length > 0) {
-                  const filteredResult = {
-                    ...result,
-                    diagnostics: accepted,
-                  };
-                  fixSummary = applyAutoFixes(filteredResult);
-                  fixSummary.unsupportedDiagnostics +=
-                    result.diagnostics.length - accepted.length - skipped;
-                } else {
-                  fixSummary = {
-                    requestedDiagnostics: result.diagnostics.length,
-                    supportedDiagnostics: 0,
-                    unsupportedDiagnostics: result.diagnostics.length,
-                    appliedFixes: 0,
-                    filesUpdated: 0,
-                    updatedFiles: [],
-                  };
-                }
-              } else {
-                fixSummary = applyAutoFixes(result);
-              }
-              if (fixSummary.appliedFixes > 0) {
-                result = await runValidationPipeline(
-                  process.cwd(),
-                  config,
-                  shouldUseInteractiveUi(io),
-                );
-              }
-            }
-
-            const duplicateDiags = detectDuplicates(result.skills);
-            if (duplicateDiags.length > 0) {
-              result = {
-                ...result,
-                diagnostics: [...result.diagnostics, ...duplicateDiags],
-                summary: {
-                  ...result.summary,
-                  warningCount:
-                    result.summary.warningCount +
-                    duplicateDiags.filter((d) => d.severity === 'warn').length,
-                  errorCount:
-                    result.summary.errorCount +
-                    duplicateDiags.filter((d) => d.severity === 'error').length,
-                },
-              };
-            }
-
-            const scores = computeSkillScores(
-              result.skills,
-              result.diagnostics,
-            );
-            const format = result.config.output.format;
-
-            let baselineDiff: BaselineDiff | undefined;
-            const baselinePath =
-              typeof rawOptions.baseline === 'string'
-                ? rawOptions.baseline
-                : undefined;
-            if (baselinePath) {
-              const baselineDiags = loadBaseline(
-                path.resolve(process.cwd(), baselinePath),
+            if (checkOptions.fix && target && isGitHubRepoUrl(target)) {
+              throw new CliError(
+                'Cannot use --fix with a GitHub URL target. Clone locally to apply persistent fixes.',
+                2,
               );
-              baselineDiff = diffBaseline(result.diagnostics, baselineDiags);
             }
+            await withResolvedTarget(target, async (resolvedTarget) => {
+              const config = await resolveConfig(
+                process.cwd(),
+                resolvedTarget.target,
+                options,
+              );
+              maybeRenderBanner(config.output.format);
+              let result = await runValidationPipeline(
+                process.cwd(),
+                config,
+                shouldUseInteractiveUi(io),
+              );
+              let fixSummary: AutoFixSummary | undefined;
 
-            if (format === 'json') {
-              const jsonData = toJson(result) as Record<string, unknown>;
-              jsonData.scores = scores;
-              if (baselineDiff) {
-                jsonData.baseline = {
-                  new: baselineDiff.newDiagnostics.length,
-                  fixed: baselineDiff.fixedDiagnostics.length,
-                  unchanged: baselineDiff.unchanged.length,
+              if (checkOptions.fix) {
+                if (checkOptions.interactive && shouldUseInteractiveUi(io)) {
+                  const { accepted, skipped } =
+                    await selectFixableDiagnostics(result);
+                  if (accepted.length > 0) {
+                    const filteredResult = {
+                      ...result,
+                      diagnostics: accepted,
+                    };
+                    fixSummary = applyAutoFixes(filteredResult);
+                    fixSummary.unsupportedDiagnostics +=
+                      result.diagnostics.length - accepted.length - skipped;
+                  } else {
+                    fixSummary = {
+                      requestedDiagnostics: result.diagnostics.length,
+                      supportedDiagnostics: 0,
+                      unsupportedDiagnostics: result.diagnostics.length,
+                      appliedFixes: 0,
+                      filesUpdated: 0,
+                      updatedFiles: [],
+                    };
+                  }
+                } else {
+                  fixSummary = applyAutoFixes(result);
+                }
+                if (fixSummary.appliedFixes > 0) {
+                  result = await runValidationPipeline(
+                    process.cwd(),
+                    config,
+                    shouldUseInteractiveUi(io),
+                  );
+                }
+              }
+
+              const duplicateDiags = detectDuplicates(result.skills);
+              if (duplicateDiags.length > 0) {
+                result = {
+                  ...result,
+                  diagnostics: [...result.diagnostics, ...duplicateDiags],
+                  summary: {
+                    ...result.summary,
+                    warningCount:
+                      result.summary.warningCount +
+                      duplicateDiags.filter((d) => d.severity === 'warn')
+                        .length,
+                    errorCount:
+                      result.summary.errorCount +
+                      duplicateDiags.filter((d) => d.severity === 'error')
+                        .length,
+                  },
                 };
               }
-              const output = `${JSON.stringify(jsonData, null, 2)}\n`;
-              io.stdout(output);
-              const written = writeIfRequested(result.config, output);
-              if (written) io.stdout(`Wrote ${written}\n`);
-            } else if (format === 'sarif') {
-              const output = `${JSON.stringify(toSarif(result), null, 2)}\n`;
-              io.stdout(output);
-              const written = writeIfRequested(result.config, output);
-              if (written) io.stdout(`Wrote ${written}\n`);
-            } else if (format === 'github') {
-              const output = toGitHubAnnotations(result);
-              if (output) io.stdout(output);
-            } else if (format === 'html') {
-              const html = renderHtml(result, scores);
+
+              const scores = computeSkillScores(
+                result.skills,
+                result.diagnostics,
+              );
+              const format = result.config.output.format;
+
+              let baselineDiff: BaselineDiff | undefined;
+              const baselinePath =
+                typeof rawOptions.baseline === 'string'
+                  ? rawOptions.baseline
+                  : undefined;
+              if (baselinePath) {
+                const baselineDiags = loadBaseline(
+                  path.resolve(process.cwd(), baselinePath),
+                );
+                baselineDiff = diffBaseline(result.diagnostics, baselineDiags);
+              }
+
+              if (format === 'json') {
+                const jsonData = toJson(result) as Record<string, unknown>;
+                jsonData.scores = scores;
+                if (baselineDiff) {
+                  jsonData.baseline = {
+                    new: baselineDiff.newDiagnostics.length,
+                    fixed: baselineDiff.fixedDiagnostics.length,
+                    unchanged: baselineDiff.unchanged.length,
+                  };
+                }
+                const output = `${JSON.stringify(jsonData, null, 2)}\n`;
+                io.stdout(output);
+                const written = writeIfRequested(result.config, output);
+                if (written) io.stdout(`Wrote ${written}\n`);
+              } else if (format === 'sarif') {
+                const output = `${JSON.stringify(toSarif(result), null, 2)}\n`;
+                io.stdout(output);
+                const written = writeIfRequested(result.config, output);
+                if (written) io.stdout(`Wrote ${written}\n`);
+              } else if (format === 'github') {
+                const output = toGitHubAnnotations(result);
+                if (output) io.stdout(output);
+              } else if (format === 'html') {
+                const html = renderHtml(result, scores);
+                const reportPath =
+                  result.config.output.reportPath ??
+                  path.join(result.config.cwd, 'skill-check-report.html');
+                const parent = path.dirname(reportPath);
+                fs.mkdirSync(parent, { recursive: true });
+                fs.writeFileSync(reportPath, html);
+                const shouldOpen =
+                  Boolean(process.stdout.isTTY) &&
+                  !process.env.CI &&
+                  rawOptions.noOpen !== true;
+                if (shouldOpen) {
+                  try {
+                    openInBrowser(reportPath);
+                  } catch {
+                    // ignore open failures
+                  }
+                }
+                io.stdout(`Wrote ${reportPath}\n`);
+              } else {
+                if (fixSummary) {
+                  io.stdout(renderAutoFixSummary(fixSummary));
+                }
+                io.stdout(
+                  renderText(result, scores, {
+                    includeConclusion: false,
+                  }),
+                );
+              }
+
+              if (baselineDiff && (format === 'text' || format === 'html')) {
+                io.stdout(
+                  `${pc.bold('Baseline:')} ${pc.green(`${baselineDiff.fixedDiagnostics.length} fixed`)} ${pc.red(`${baselineDiff.newDiagnostics.length} new`)} ${pc.dim(`${baselineDiff.unchanged.length} unchanged`)}\n`,
+                );
+              }
+
+              const validationExitCode = resolveExitCode(result);
+              let exitCode = validationExitCode;
+              if (format === 'html') {
+                io.stdout(
+                  `${pc.bold('Validation:')} ${validationExitCode === 0 ? pc.green('PASS') : pc.red('FAIL')}\n`,
+                );
+              }
+              let scanExitCode: number | undefined;
+              if (scanOptions.enabled) {
+                scanExitCode = await runAgentScanWithFeedback(
+                  scanOptions,
+                  resolvedTarget.target,
+                  io,
+                  format,
+                );
+                if (format === 'html') {
+                  io.stdout(
+                    `${pc.bold('Security scan:')} ${scanExitCode === 0 ? pc.green('PASS') : pc.red('FAIL')}\n`,
+                  );
+                }
+                if (scanExitCode !== 0) {
+                  exitCode = 1;
+                }
+              } else if (format === 'html') {
+                io.stdout(
+                  `${pc.bold('Security scan:')} ${pc.yellow('SKIPPED')}\n`,
+                );
+              }
+
+              if (format === 'text') {
+                const conclusion = renderConclusionCard({
+                  skillCount: result.summary.skillCount,
+                  errorCount: result.summary.errorCount,
+                  warningCount: result.summary.warningCount,
+                  affectedFileCount: countAffectedFiles(result.diagnostics),
+                  overallScore: computeOverallScore(scores),
+                  validationStatus: resolveValidationStatus(result),
+                  securityStatus: resolveSecurityStatus(
+                    scanOptions.enabled,
+                    scanExitCode,
+                  ),
+                  elapsedMs: performance.now() - checkStartedAt,
+                  runCommand,
+                });
+                io.stdout(`${conclusion.card}\n`);
+                if (conclusion.fullCommandPlain) {
+                  io.stdout(`${conclusion.fullCommandPlain}\n`);
+                }
+              }
+
+              finalExitCode = exitCode;
+            });
+          },
+        ),
+    ),
+  );
+
+  addSharedOptions(
+    program
+      .command('report [target]')
+      .description('Generate markdown health report')
+      .option('--no-open', 'Do not open HTML report in browser')
+      .action(
+        async (
+          target: string | undefined,
+          rawOptions: Record<string, unknown>,
+        ) => {
+          const options = normalizeCliOptions(rawOptions);
+          await withResolvedTarget(target, async (resolvedTarget) => {
+            const result = await analyze(
+              process.cwd(),
+              resolvedTarget.target,
+              options,
+            );
+            const format = result.config.output.format;
+            if (format === 'html') {
+              const html = renderHtml(result);
               const reportPath =
                 result.config.output.reportPath ??
                 path.join(result.config.cwd, 'skill-check-report.html');
@@ -690,92 +919,13 @@ export async function runCli(
               }
               io.stdout(`Wrote ${reportPath}\n`);
             } else {
-              if (fixSummary) {
-                io.stdout(renderAutoFixSummary(fixSummary));
-              }
-              io.stdout(renderText(result, scores));
+              const markdown = renderMarkdownReport(result);
+              const written = writeIfRequested(result.config, markdown);
+              io.stdout(markdown);
+              if (written) io.stdout(`Wrote ${written}\n`);
             }
-
-            if (baselineDiff && (format === 'text' || format === 'html')) {
-              io.stdout(
-                `${pc.bold('Baseline:')} ${pc.green(`${baselineDiff.fixedDiagnostics.length} fixed`)} ${pc.red(`${baselineDiff.newDiagnostics.length} new`)} ${pc.dim(`${baselineDiff.unchanged.length} unchanged`)}\n`,
-              );
-            }
-
-            const validationExitCode = resolveExitCode(result);
-            let exitCode = validationExitCode;
-            if (format === 'text' || format === 'html') {
-              io.stdout(
-                `${pc.bold('Validation:')} ${validationExitCode === 0 ? pc.green('PASS') : pc.red('FAIL')}\n`,
-              );
-            }
-            if (scanOptions.enabled) {
-              const scanExitCode = await runAgentScanWithFeedback(
-                scanOptions,
-                target,
-                io,
-                format,
-              );
-              if (format === 'text' || format === 'html') {
-                io.stdout(
-                  `${pc.bold('Security scan:')} ${scanExitCode === 0 ? pc.green('PASS') : pc.red('FAIL')}\n`,
-                );
-              }
-              if (scanExitCode !== 0) {
-                exitCode = 1;
-              }
-            } else if (format === 'text' || format === 'html') {
-              io.stdout(
-                `${pc.bold('Security scan:')} ${pc.yellow('SKIPPED')}\n`,
-              );
-            }
-
-            finalExitCode = exitCode;
-          },
-        ),
-    ),
-  );
-
-  addSharedOptions(
-    program
-      .command('report [target]')
-      .description('Generate markdown health report')
-      .option('--no-open', 'Do not open HTML report in browser')
-      .action(
-        async (
-          target: string | undefined,
-          rawOptions: Record<string, unknown>,
-        ) => {
-          const options = normalizeCliOptions(rawOptions);
-          const result = await analyze(process.cwd(), target, options);
-          const format = result.config.output.format;
-          if (format === 'html') {
-            const html = renderHtml(result);
-            const reportPath =
-              result.config.output.reportPath ??
-              path.join(result.config.cwd, 'skill-check-report.html');
-            const parent = path.dirname(reportPath);
-            fs.mkdirSync(parent, { recursive: true });
-            fs.writeFileSync(reportPath, html);
-            const shouldOpen =
-              Boolean(process.stdout.isTTY) &&
-              !process.env.CI &&
-              rawOptions.noOpen !== true;
-            if (shouldOpen) {
-              try {
-                openInBrowser(reportPath);
-              } catch {
-                // ignore open failures
-              }
-            }
-            io.stdout(`Wrote ${reportPath}\n`);
-          } else {
-            const markdown = renderMarkdownReport(result);
-            const written = writeIfRequested(result.config, markdown);
-            io.stdout(markdown);
-            if (written) io.stdout(`Wrote ${written}\n`);
-          }
-          finalExitCode = resolveExitCode(result);
+            finalExitCode = resolveExitCode(result);
+          });
         },
       ),
   );
@@ -795,13 +945,15 @@ export async function runCli(
           });
           maybeRenderBanner('text');
 
-          const scanExitCode = await runAgentScanWithFeedback(
-            scanOptions,
-            target,
-            io,
-            'text',
-          );
-          finalExitCode = scanExitCode === 0 ? 0 : 1;
+          await withResolvedTarget(target, async (resolvedTarget) => {
+            const scanExitCode = await runAgentScanWithFeedback(
+              scanOptions,
+              resolvedTarget.target,
+              io,
+              'text',
+            );
+            finalExitCode = scanExitCode === 0 ? 0 : 1;
+          });
         },
       ),
   );
@@ -884,6 +1036,8 @@ export async function runCli(
     .command('diff <pathA> <pathB>')
     .description('Compare diagnostics between two skill directories')
     .action(async (pathA: string, pathB: string) => {
+      assertLocalOnlyTarget(pathA, 'diff');
+      assertLocalOnlyTarget(pathB, 'diff');
       const resultA = await analyze(process.cwd(), pathA, {});
       const resultB = await analyze(process.cwd(), pathB, {});
 
@@ -930,6 +1084,7 @@ export async function runCli(
           target: string | undefined,
           rawOptions: Record<string, unknown>,
         ) => {
+          assertLocalOnlyTarget(target, 'watch');
           const options = normalizeCliOptions(rawOptions);
           const config = await resolveConfig(process.cwd(), target, options);
           const watchDirs =
@@ -941,12 +1096,17 @@ export async function runCli(
 
           const runCheck = async () => {
             try {
+              const startedAt = performance.now();
               const result = await analyzeWithConfig(process.cwd(), config);
               const scores = computeSkillScores(
                 result.skills,
                 result.diagnostics,
               );
-              io.stdout(`\n${renderText(result, scores)}`);
+              io.stdout(
+                `\n${renderText(result, scores, {
+                  elapsedMs: performance.now() - startedAt,
+                })}`,
+              );
             } catch (err) {
               io.stderr(
                 `Error: ${err instanceof Error ? err.message : String(err)}\n`,

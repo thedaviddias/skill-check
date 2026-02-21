@@ -12,6 +12,8 @@ pnpm run check:security
 npx skill-check check . --no-security-scan
 ```
 
+Text output ends with a copy/try-friendly summary card that includes the exact `npx skill-check ...` command used for the run (including GitHub URL targets).
+
 If the scan runner needs to install dependencies, automatic installs are enabled by default.
 Use `--no-installs` to hard-block installs.
 
@@ -75,6 +77,15 @@ Use against another repo:
 npx skill-check /path/to/repo
 ```
 
+Use directly against a GitHub repo URL (ephemeral shallow clone, auto-cleanup):
+
+```bash
+npx skill-check https://github.com/thedaviddias/skill-check --no-security-scan
+npx skill-check https://github.com/thedaviddias/skill-check/tree/main/skills --no-security-scan
+```
+
+`--fix` is local-only for now when using GitHub URLs.
+
 Apply safe automatic fixes:
 
 ```bash
@@ -104,6 +115,8 @@ Compare two skill directories:
 ```bash
 npx skill-check diff skills/ other-skills/
 ```
+
+`watch` and `diff` currently support local paths only (not GitHub URLs).
 
 Save a baseline and compare later:
 
