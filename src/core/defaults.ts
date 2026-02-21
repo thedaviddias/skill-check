@@ -1,6 +1,6 @@
 import type { LimitsConfig, OutputConfig, RuleLevel } from '../types.js';
 
-export const DEFAULT_INCLUDE = ['**/skills/*/SKILL.md'];
+export const DEFAULT_INCLUDE = ['**/SKILL.md'];
 
 export const DEFAULT_EXCLUDE = [
   '**/node_modules/**',

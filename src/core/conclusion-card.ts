@@ -3,7 +3,7 @@ import pc from 'picocolors';
 const pcForced = pc.createColors(true);
 type Colors = ReturnType<typeof pc.createColors>;
 
-export type ValidationStatus = 'PASS' | 'WARN' | 'FAIL';
+export type ValidationStatus = 'PASS' | 'WARN' | 'FAIL' | 'SKIPPED';
 export type SecurityStatus = 'PASS' | 'FAIL' | 'SKIPPED';
 export type ConclusionCardMode = 'default' | 'share';
 
@@ -95,6 +95,7 @@ function renderScoreBar(
 function renderValidationStatus(c: Colors, status: ValidationStatus): string {
   if (status === 'PASS') return c.green(status);
   if (status === 'WARN') return c.yellow(status);
+  if (status === 'SKIPPED') return c.dim(status);
   return c.red(status);
 }
 

@@ -900,6 +900,7 @@ async function runAgentScanWithFeedback(
 }
 
 function resolveValidationStatus(result: AnalysisResult): ValidationStatus {
+  if (result.summary.skillCount === 0) return 'SKIPPED';
   if (result.summary.errorCount > 0) return 'FAIL';
   if (result.summary.warningCount > 0) return 'WARN';
   return 'PASS';
@@ -908,8 +909,10 @@ function resolveValidationStatus(result: AnalysisResult): ValidationStatus {
 function resolveSecurityStatus(
   enabled: boolean,
   scanExitCode: number | undefined,
+  skillCount: number,
 ): SecurityStatus {
   if (!enabled) return 'SKIPPED';
+  if (skillCount === 0) return 'SKIPPED';
   return scanExitCode === 0 ? 'PASS' : 'FAIL';
 }
 
@@ -1215,6 +1218,7 @@ export async function runCli(
                     securityStatus: resolveSecurityStatus(
                       scanOptions.enabled,
                       scanExitCode,
+                      result.summary.skillCount,
                     ),
                     elapsedMs: performance.now() - checkStartedAt,
                     runCommand,
@@ -1224,7 +1228,7 @@ export async function runCli(
                   if (conclusion.fullCommandPlain) {
                     io.stdout(`${conclusion.fullCommandPlain}\n`);
                   }
-                  if (checkOptions.share) {
+                  if (checkOptions.share && result.summary.skillCount > 0) {
                     emitShareStatus(io, 'rendering share image...');
                     const shareOutputPath = path.resolve(
                       process.cwd(),

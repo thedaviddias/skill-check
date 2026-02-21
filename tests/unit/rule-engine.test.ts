@@ -29,7 +29,7 @@ const baseConfig: ResolvedConfig = {
   cwd: process.cwd(),
   roots: ['.'],
   rootsAbs: [process.cwd()],
-  include: ['**/skills/*/SKILL.md'],
+  include: ['**/SKILL.md'],
   exclude: [],
   limits: {
     maxDescriptionChars: 1024,

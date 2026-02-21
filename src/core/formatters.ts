@@ -104,6 +104,7 @@ function renderScoreBar(score: number): string {
 }
 
 function resolveValidationStatus(result: AnalysisResult): ValidationStatus {
+  if (result.summary.skillCount === 0) return 'SKIPPED';
   if (result.summary.errorCount > 0) return 'FAIL';
   if (result.summary.warningCount > 0) return 'WARN';
   return 'PASS';

@@ -7,6 +7,6 @@ Set Height 560
 Set Shell "bash"
 Set TypingSpeed 140ms
 
-Type "npx skill-check ."
+Type "npx skill-check"
 Enter
 Sleep 10s
