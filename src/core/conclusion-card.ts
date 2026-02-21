@@ -1,5 +1,8 @@
 import pc from 'picocolors';
 
+const pcForced = pc.createColors(true);
+type Colors = ReturnType<typeof pc.createColors>;
+
 export type ValidationStatus = 'PASS' | 'WARN' | 'FAIL';
 export type SecurityStatus = 'PASS' | 'FAIL' | 'SKIPPED';
 export type ConclusionCardMode = 'default' | 'share';
@@ -41,12 +44,16 @@ function padLine(line: FramedLine, width: number): string {
   return `| ${line.renderedText}${trailing} |`;
 }
 
-function colorizeByScore(score: number | null, text: string): string {
-  if (score === null) return pc.dim(text);
-  if (score >= 90) return pc.green(text);
-  if (score >= 75) return pc.cyan(text);
-  if (score >= 50) return pc.yellow(text);
-  return pc.red(text);
+function colorizeByScore(
+  c: Colors,
+  score: number | null,
+  text: string,
+): string {
+  if (score === null) return c.dim(text);
+  if (score >= 90) return c.green(text);
+  if (score >= 75) return c.cyan(text);
+  if (score >= 50) return c.yellow(text);
+  return c.red(text);
 }
 
 function scoreLabel(score: number | null): string {
@@ -65,13 +72,14 @@ function formatElapsed(elapsedMs: number): string {
 }
 
 function renderScoreBar(
+  c: Colors,
   score: number | null,
   mode: ConclusionCardMode = 'default',
 ): FramedLine {
   const emptyChar = mode === 'share' ? '·' : '░';
   if (score === null) {
     const empty = emptyChar.repeat(SCORE_BAR_WIDTH);
-    return createLine(empty, pc.dim(empty));
+    return createLine(empty, c.dim(empty));
   }
 
   const filledCount = Math.round((score / 100) * SCORE_BAR_WIDTH);
@@ -80,20 +88,20 @@ function renderScoreBar(
   const empty = emptyChar.repeat(emptyCount);
   return createLine(
     `${filled}${empty}`,
-    `${colorizeByScore(score, filled)}${pc.dim(empty)}`,
+    `${colorizeByScore(c, score, filled)}${c.dim(empty)}`,
   );
 }
 
-function renderValidationStatus(status: ValidationStatus): string {
-  if (status === 'PASS') return pc.green(status);
-  if (status === 'WARN') return pc.yellow(status);
-  return pc.red(status);
+function renderValidationStatus(c: Colors, status: ValidationStatus): string {
+  if (status === 'PASS') return c.green(status);
+  if (status === 'WARN') return c.yellow(status);
+  return c.red(status);
 }
 
-function renderSecurityStatus(status: SecurityStatus): string {
-  if (status === 'PASS') return pc.green(status);
-  if (status === 'FAIL') return pc.red(status);
-  return pc.yellow(status);
+function renderSecurityStatus(c: Colors, status: SecurityStatus): string {
+  if (status === 'PASS') return c.green(status);
+  if (status === 'FAIL') return c.red(status);
+  return c.yellow(status);
 }
 
 function truncateRunCommand(
@@ -118,17 +126,18 @@ export function renderConclusionCard(
   input: ConclusionCardInput,
 ): ConclusionCardRenderResult {
   const mode = input.mode ?? 'default';
+  const c: Colors = mode === 'share' ? pcForced : pc;
   const scoreValue =
     input.overallScore === null
       ? '--'
       : String(Math.max(0, input.overallScore));
   const label = scoreLabel(input.overallScore);
   const scoreLinePlain = `${scoreValue} / 100  ${label}`;
-  const scoreLineRendered = `${colorizeByScore(input.overallScore, scoreValue)} / 100  ${colorizeByScore(input.overallScore, label)}`;
-  const scoreBar = renderScoreBar(input.overallScore, mode);
+  const scoreLineRendered = `${colorizeByScore(c, input.overallScore, scoreValue)} / 100  ${colorizeByScore(c, input.overallScore, label)}`;
+  const scoreBar = renderScoreBar(c, input.overallScore, mode);
 
   const validationLinePlain = `validation ${input.validationStatus} | security ${input.securityStatus}`;
-  const validationLineRendered = `${pc.bold('validation')} ${renderValidationStatus(input.validationStatus)} ${pc.dim('|')} ${pc.bold('security')} ${renderSecurityStatus(input.securityStatus)}`;
+  const validationLineRendered = `${c.bold('validation')} ${renderValidationStatus(c, input.validationStatus)} ${c.dim('|')} ${c.bold('security')} ${renderSecurityStatus(c, input.securityStatus)}`;
 
   const errorsText = `✖ ${input.errorCount} error${input.errorCount === 1 ? '' : 's'}`;
   const warningsText = `⚠ ${input.warningCount} warning${input.warningCount === 1 ? '' : 's'}`;
@@ -138,9 +147,9 @@ export function renderConclusionCard(
 
   const countsLinePlain = `${errorsText}  ${warningsText}  ${skillCountText}  ${filesText}  ${elapsedText}`;
   const countsLineRendered =
-    `${input.errorCount > 0 ? pc.red(errorsText) : pc.dim(errorsText)}  ` +
-    `${input.warningCount > 0 ? pc.yellow(warningsText) : pc.dim(warningsText)}  ` +
-    `${pc.dim(skillCountText)}  ${pc.dim(filesText)}  ${pc.dim(elapsedText)}`;
+    `${input.errorCount > 0 ? c.red(errorsText) : c.dim(errorsText)}  ` +
+    `${input.warningCount > 0 ? c.yellow(warningsText) : c.dim(warningsText)}  ` +
+    `${c.dim(skillCountText)}  ${c.dim(filesText)}  ${c.dim(elapsedText)}`;
 
   const title = input.title ?? 'skill-check cli';
   let fullCommandPlain: string | undefined;
@@ -161,17 +170,17 @@ export function renderConclusionCard(
   const lines: FramedLine[] = [];
   if (mode === 'share') {
     lines.push(
-      createLine(title, `${pc.bold(pc.cyan('skill-check'))} ${pc.bold('cli')}`),
+      createLine(title, `${c.bold(c.cyan('skill-check'))} ${c.bold('cli')}`),
       createLine(''),
     );
   } else {
     lines.push(
-      createLine('  .--------.', pc.cyan('  .--------.')),
-      createLine('  | skill  |', pc.cyan('  | skill  |')),
-      createLine('  | check  |', pc.cyan('  | check  |')),
-      createLine("  '--------'", pc.cyan("  '--------'")),
+      createLine('  .--------.', c.cyan('  .--------.')),
+      createLine('  | skill  |', c.cyan('  | skill  |')),
+      createLine('  | check  |', c.cyan('  | check  |')),
+      createLine("  '--------'", c.cyan("  '--------'")),
       createLine(''),
-      createLine(title, `${pc.bold('skill-check')} ${pc.dim('cli')}`),
+      createLine(title, `${c.bold('skill-check')} ${c.dim('cli')}`),
       createLine(''),
     );
   }
@@ -180,13 +189,11 @@ export function renderConclusionCard(
     lines.push(
       createLine(
         `run: ${runCommandPreview}`,
-        `${pc.bold('run:')} ${pc.cyan(runCommandPreview)}`,
+        `${c.bold('run:')} ${c.cyan(runCommandPreview)}`,
       ),
     );
     if (runCommandWasTruncated) {
-      lines.push(
-        createLine('full command below', pc.dim('full command below')),
-      );
+      lines.push(createLine('full command below', c.dim('full command below')));
     }
   }
 
@@ -204,11 +211,11 @@ export function renderConclusionCard(
       createLine(''),
       createLine(
         'try it: npx skill-check <path-or-github-url>',
-        `${pc.bold('try it:')} ${pc.cyan('npx skill-check <path-or-github-url>')}`,
+        `${c.bold('try it:')} ${c.cyan('npx skill-check <path-or-github-url>')}`,
       ),
       createLine(
         'npm: https://www.npmjs.com/package/skill-check',
-        `${pc.bold('npm:')} ${pc.dim('https://www.npmjs.com/package/skill-check')}`,
+        `${c.bold('npm:')} ${c.dim('https://www.npmjs.com/package/skill-check')}`,
       ),
     );
   }

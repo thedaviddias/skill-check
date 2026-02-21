@@ -37,7 +37,7 @@ function ansiToFill(code: string): string | null {
 }
 
 function parseAnsiLine(line: string): ColoredSegment[] {
-  const segments: ColoredSegment[] = [];
+  const raw: ColoredSegment[] = [];
   let fill = DEFAULT_FILL;
   let lastIndex = 0;
   ANSI_RE.lastIndex = 0;
@@ -45,7 +45,7 @@ function parseAnsiLine(line: string): ColoredSegment[] {
   while (match !== null) {
     const text = line.slice(lastIndex, match.index);
     if (text.length > 0) {
-      segments.push({ text, fill });
+      raw.push({ text, fill });
     }
     const nextFill = ansiToFill(match[0]);
     if (nextFill !== null) fill = nextFill;
@@ -54,7 +54,22 @@ function parseAnsiLine(line: string): ColoredSegment[] {
   }
   const tail = line.slice(lastIndex);
   if (tail.length > 0) {
-    segments.push({ text: tail, fill });
+    raw.push({ text: tail, fill });
+  }
+
+  // resvg drops whitespace-only tspan elements, so merge them into the
+  // preceding segment to keep spaces visible.
+  const segments: ColoredSegment[] = [];
+  for (const seg of raw) {
+    if (seg.text.trim() === '' && segments.length > 0) {
+      const prev = segments[segments.length - 1];
+      segments[segments.length - 1] = {
+        text: prev.text + seg.text,
+        fill: prev.fill,
+      };
+    } else {
+      segments.push(seg);
+    }
   }
   return segments;
 }
@@ -93,16 +108,13 @@ export function renderShareImageSvg(cardText: string): string {
       if (segments.length === 0) {
         return `  <text x="${textX}" y="${y}" fill="${DEFAULT_FILL}" font-family="${fontFamily}" font-size="${BASE_FONT_SIZE}"></text>`;
       }
-      let x = textX;
       const tspans = segments
         .map((seg) => {
           const escaped = escapeXml(seg.text);
-          const span = `    <tspan x="${x}" y="${y}" fill="${seg.fill}">${escaped}</tspan>`;
-          x += seg.text.length * CHAR_WIDTH;
-          return span;
+          return `<tspan fill="${seg.fill}">${escaped}</tspan>`;
         })
-        .join('\n');
-      return `  <text font-family="${fontFamily}" font-size="${BASE_FONT_SIZE}" xml:space="preserve">\n${tspans}\n  </text>`;
+        .join('');
+      return `  <text x="${textX}" y="${y}" font-family="${fontFamily}" font-size="${BASE_FONT_SIZE}" xml:space="preserve">${tspans}</text>`;
     })
     .join('\n');
 

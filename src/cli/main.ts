@@ -274,14 +274,22 @@ function parseCommaSeparated(value: string): string[] {
     .filter(Boolean);
 }
 
-function normalizeRootCommandArgs(argv: string[]): string[] {
+export function normalizeRootCommandArgs(argv: string[]): string[] {
   if (argv.length === 0) {
-    return argv;
+    return ['check', '.'];
   }
 
   const [first] = argv;
-  if (!first || first.startsWith('-') || ROOT_COMMANDS.has(first)) {
+  if (!first || ROOT_COMMANDS.has(first)) {
     return argv;
+  }
+
+  if (first === '-h' || first === '--help') {
+    return argv;
+  }
+
+  if (first.startsWith('-')) {
+    return ['check', '.', ...argv];
   }
 
   return ['check', ...argv];
