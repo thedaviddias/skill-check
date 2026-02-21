@@ -1,6 +1,6 @@
 {
   "name": "skill-check",
-  "version": "0.1.1",
+  "version": "1.0.0",
   "description": "Linter for agent skill files",
   "type": "module",
   "private": false,
