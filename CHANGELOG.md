@@ -1,3 +1,10 @@
+# [1.2.0](https://github.com/thedaviddias/skill-check/compare/v1.1.0...v1.2.0) (2026-02-21)
+
+
+### Features
+
+* add 6 new validation rules aligned with Agent Skills spec ([9f3f675](https://github.com/thedaviddias/skill-check/commit/9f3f6759bdd729ca965aaa0e0d3d2d435c336a1c))
+
 # [1.1.0](https://github.com/thedaviddias/skill-check/compare/v1.0.0...v1.1.0) (2026-02-21)
 
 
