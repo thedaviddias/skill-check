@@ -6,6 +6,7 @@ import {
   isGitHubRepoUrl,
   materializeRemoteTarget,
   parseGitHubTarget,
+  type RemoteTargetProgressEvent,
 } from '../../src/core/remote-target.js';
 
 describe('remote target parsing', () => {
@@ -52,9 +53,11 @@ describe('remote target parsing', () => {
 describe('remote target materialization', () => {
   it('materializes root repo URL with shallow clone', () => {
     const calls: Array<{ command: string; args: string[] }> = [];
+    const events: RemoteTargetProgressEvent[] = [];
     const materialized = materializeRemoteTarget(
       'https://github.com/acme/repo',
       {
+        onProgress: (event) => events.push(event),
         runCommand: (command, args) => {
           calls.push({ command, args });
           const checkout = args[args.length - 1];
@@ -74,6 +77,11 @@ describe('remote target materialization', () => {
     expect(calls[0]?.args[calls[0].args.length - 2]).toBe(
       'https://github.com/acme/repo.git',
     );
+    expect(events.map((event) => event.type)).toEqual([
+      'clone_start',
+      'clone_done',
+      'ready',
+    ]);
     expect(materialized.path).toBe(materialized.metadata.checkoutPath);
     expect(fs.existsSync(materialized.metadata.tempDir)).toBe(true);
 
@@ -82,9 +90,11 @@ describe('remote target materialization', () => {
   });
 
   it('materializes tree URL with branch and subpath', () => {
+    const events: RemoteTargetProgressEvent[] = [];
     const materialized = materializeRemoteTarget(
       'https://github.com/acme/repo/tree/main/skills/demo',
       {
+        onProgress: (event) => events.push(event),
         runCommand: (_command, args) => {
           const checkout = args[args.length - 1];
           fs.mkdirSync(path.join(checkout, 'skills/demo'), { recursive: true });
@@ -99,6 +109,12 @@ describe('remote target materialization', () => {
 
     expect(materialized.metadata.ref).toBe('main');
     expect(materialized.metadata.subpath).toBe('skills/demo');
+    expect(events.map((event) => event.type)).toEqual([
+      'clone_start',
+      'clone_done',
+      'subpath_start',
+      'ready',
+    ]);
     expect(
       materialized.path.endsWith(path.join('repo', 'skills', 'demo')),
     ).toBe(true);
@@ -109,9 +125,11 @@ describe('remote target materialization', () => {
   it('cleans up temp dir when git clone fails', () => {
     const tmpParent = fs.mkdtempSync(path.join(os.tmpdir(), 'sc-remote-fail-'));
     let createdTempDir: string | undefined;
+    const events: RemoteTargetProgressEvent[] = [];
 
     expect(() =>
       materializeRemoteTarget('https://github.com/acme/repo', {
+        onProgress: (event) => events.push(event),
         mkdtempSync: () => {
           createdTempDir = fs.mkdtempSync(path.join(tmpParent, 'checkout-'));
           return createdTempDir;
@@ -128,6 +146,10 @@ describe('remote target materialization', () => {
     if (createdTempDir) {
       expect(fs.existsSync(createdTempDir)).toBe(false);
     }
+    expect(events.map((event) => event.type)).toEqual([
+      'clone_start',
+      'failed',
+    ]);
 
     fs.rmSync(tmpParent, { recursive: true, force: true });
   });

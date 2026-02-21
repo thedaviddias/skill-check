@@ -57,6 +57,7 @@ import { computeSkillScores } from '../core/quality-score.js';
 import {
   isGitHubRepoUrl,
   materializeRemoteTarget,
+  type RemoteTargetProgressEvent,
 } from '../core/remote-target.js';
 import { renderMarkdownReport } from '../core/report.js';
 import { toSarif } from '../core/sarif.js';
@@ -218,6 +219,10 @@ interface ResolvedCommandTarget {
   cleanup?: () => void;
 }
 
+interface ResolveTargetOptions {
+  onProgress?: (event: RemoteTargetProgressEvent) => void;
+}
+
 function parseCommaSeparated(value: string): string[] {
   return value
     .split(',')
@@ -269,6 +274,7 @@ function normalizeCheckCommandOptions(
 
 function resolveCommandTarget(
   target: string | undefined,
+  options: ResolveTargetOptions = {},
 ): ResolvedCommandTarget {
   if (!target || !isGitHubRepoUrl(target)) {
     return {
@@ -277,7 +283,9 @@ function resolveCommandTarget(
     };
   }
 
-  const materialized = materializeRemoteTarget(target);
+  const materialized = materializeRemoteTarget(target, {
+    onProgress: options.onProgress,
+  });
   return {
     target: materialized.path,
     isRemote: true,
@@ -294,6 +302,124 @@ async function withResolvedTarget<T>(
     return await run(resolved);
   } finally {
     resolved.cleanup?.();
+  }
+}
+
+interface RemoteTargetLoader {
+  start: (url: string) => void;
+  onProgress: (event: RemoteTargetProgressEvent) => void;
+  fail: (error: unknown) => void;
+}
+
+function toErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function createRemoteTargetLoader(io: CliIO): RemoteTargetLoader {
+  const useSpinner = shouldUseInteractiveUi(io);
+  const spinner = useSpinner ? ora() : null;
+  let finished = false;
+  let failedViaEvent = false;
+
+  const write = (message: string): void => {
+    io.stderr(`${message}\n`);
+  };
+
+  const update = (message: string): void => {
+    if (finished) return;
+    if (spinner) {
+      if (spinner.isSpinning) {
+        spinner.text = message;
+      } else {
+        spinner.start(message);
+      }
+      return;
+    }
+    write(`[remote] ${message}`);
+  };
+
+  const succeed = (message: string): void => {
+    if (finished) return;
+    if (spinner) {
+      if (spinner.isSpinning) {
+        spinner.succeed(message);
+      } else {
+        write(`[remote] ${message}`);
+      }
+    } else {
+      write(`[remote] ${message}`);
+    }
+    finished = true;
+  };
+
+  const failInternal = (message: string): void => {
+    if (finished) return;
+    if (spinner) {
+      if (spinner.isSpinning) {
+        spinner.fail(message);
+      } else {
+        write(`[remote] ${message}`);
+      }
+    } else {
+      write(`[remote] ${message}`);
+    }
+    finished = true;
+  };
+
+  return {
+    start: (url: string) => {
+      update(`Preparing remote target: ${url}`);
+    },
+    onProgress: (event: RemoteTargetProgressEvent) => {
+      if (event.type === 'clone_start') {
+        const refLabel = event.ref ? ` (ref: ${event.ref})` : '';
+        update(`Cloning ${event.cloneUrl}${refLabel}`);
+        return;
+      }
+      if (event.type === 'clone_done') {
+        update(`Clone complete: ${event.checkoutPath}`);
+        return;
+      }
+      if (event.type === 'subpath_start') {
+        update(`Resolving subpath: ${event.subpath}`);
+        return;
+      }
+      if (event.type === 'ready') {
+        succeed(`Remote target ready: ${event.targetPath}`);
+        return;
+      }
+      failedViaEvent = true;
+      failInternal(`Remote target failed: ${event.message}`);
+    },
+    fail: (error: unknown) => {
+      if (failedViaEvent) return;
+      failInternal(`Remote target failed: ${toErrorMessage(error)}`);
+    },
+  };
+}
+
+async function withResolvedTargetFeedback<T>(
+  target: string | undefined,
+  io: CliIO,
+  run: (resolved: ResolvedCommandTarget) => Promise<T>,
+): Promise<T> {
+  if (!target || !isGitHubRepoUrl(target)) {
+    return withResolvedTarget(target, run);
+  }
+
+  const loader = createRemoteTargetLoader(io);
+  loader.start(target);
+  let resolved: ResolvedCommandTarget | undefined;
+  try {
+    resolved = resolveCommandTarget(target, {
+      onProgress: (event) => loader.onProgress(event),
+    });
+    return await run(resolved);
+  } catch (error) {
+    loader.fail(error);
+    throw error;
+  } finally {
+    resolved?.cleanup?.();
   }
 }
 
@@ -679,115 +805,235 @@ export async function runCli(
                 2,
               );
             }
-            await withResolvedTarget(target, async (resolvedTarget) => {
-              const config = await resolveConfig(
-                process.cwd(),
-                resolvedTarget.target,
-                options,
-              );
-              maybeRenderBanner(config.output.format);
-              let result = await runValidationPipeline(
-                process.cwd(),
-                config,
-                shouldUseInteractiveUi(io),
-              );
-              let fixSummary: AutoFixSummary | undefined;
-
-              if (checkOptions.fix) {
-                if (checkOptions.interactive && shouldUseInteractiveUi(io)) {
-                  const { accepted, skipped } =
-                    await selectFixableDiagnostics(result);
-                  if (accepted.length > 0) {
-                    const filteredResult = {
-                      ...result,
-                      diagnostics: accepted,
-                    };
-                    fixSummary = applyAutoFixes(filteredResult);
-                    fixSummary.unsupportedDiagnostics +=
-                      result.diagnostics.length - accepted.length - skipped;
-                  } else {
-                    fixSummary = {
-                      requestedDiagnostics: result.diagnostics.length,
-                      supportedDiagnostics: 0,
-                      unsupportedDiagnostics: result.diagnostics.length,
-                      appliedFixes: 0,
-                      filesUpdated: 0,
-                      updatedFiles: [],
-                    };
-                  }
-                } else {
-                  fixSummary = applyAutoFixes(result);
-                }
-                if (fixSummary.appliedFixes > 0) {
-                  result = await runValidationPipeline(
-                    process.cwd(),
-                    config,
-                    shouldUseInteractiveUi(io),
-                  );
-                }
-              }
-
-              const duplicateDiags = detectDuplicates(result.skills);
-              if (duplicateDiags.length > 0) {
-                result = {
-                  ...result,
-                  diagnostics: [...result.diagnostics, ...duplicateDiags],
-                  summary: {
-                    ...result.summary,
-                    warningCount:
-                      result.summary.warningCount +
-                      duplicateDiags.filter((d) => d.severity === 'warn')
-                        .length,
-                    errorCount:
-                      result.summary.errorCount +
-                      duplicateDiags.filter((d) => d.severity === 'error')
-                        .length,
-                  },
-                };
-              }
-
-              const scores = computeSkillScores(
-                result.skills,
-                result.diagnostics,
-              );
-              const format = result.config.output.format;
-
-              let baselineDiff: BaselineDiff | undefined;
-              const baselinePath =
-                typeof rawOptions.baseline === 'string'
-                  ? rawOptions.baseline
-                  : undefined;
-              if (baselinePath) {
-                const baselineDiags = loadBaseline(
-                  path.resolve(process.cwd(), baselinePath),
+            await withResolvedTargetFeedback(
+              target,
+              io,
+              async (resolvedTarget) => {
+                const cwd = resolvedTarget.target ?? process.cwd();
+                const config = await resolveConfig(
+                  cwd,
+                  resolvedTarget.target,
+                  options,
                 );
-                baselineDiff = diffBaseline(result.diagnostics, baselineDiags);
-              }
+                maybeRenderBanner(config.output.format);
+                let result = await runValidationPipeline(
+                  cwd,
+                  config,
+                  shouldUseInteractiveUi(io),
+                );
+                let fixSummary: AutoFixSummary | undefined;
 
-              if (format === 'json') {
-                const jsonData = toJson(result) as Record<string, unknown>;
-                jsonData.scores = scores;
-                if (baselineDiff) {
-                  jsonData.baseline = {
-                    new: baselineDiff.newDiagnostics.length,
-                    fixed: baselineDiff.fixedDiagnostics.length,
-                    unchanged: baselineDiff.unchanged.length,
+                if (checkOptions.fix) {
+                  if (checkOptions.interactive && shouldUseInteractiveUi(io)) {
+                    const { accepted, skipped } =
+                      await selectFixableDiagnostics(result);
+                    if (accepted.length > 0) {
+                      const filteredResult = {
+                        ...result,
+                        diagnostics: accepted,
+                      };
+                      fixSummary = applyAutoFixes(filteredResult);
+                      fixSummary.unsupportedDiagnostics +=
+                        result.diagnostics.length - accepted.length - skipped;
+                    } else {
+                      fixSummary = {
+                        requestedDiagnostics: result.diagnostics.length,
+                        supportedDiagnostics: 0,
+                        unsupportedDiagnostics: result.diagnostics.length,
+                        appliedFixes: 0,
+                        filesUpdated: 0,
+                        updatedFiles: [],
+                      };
+                    }
+                  } else {
+                    fixSummary = applyAutoFixes(result);
+                  }
+                  if (fixSummary.appliedFixes > 0) {
+                    result = await runValidationPipeline(
+                      cwd,
+                      config,
+                      shouldUseInteractiveUi(io),
+                    );
+                  }
+                }
+
+                const duplicateDiags = detectDuplicates(result.skills);
+                if (duplicateDiags.length > 0) {
+                  result = {
+                    ...result,
+                    diagnostics: [...result.diagnostics, ...duplicateDiags],
+                    summary: {
+                      ...result.summary,
+                      warningCount:
+                        result.summary.warningCount +
+                        duplicateDiags.filter((d) => d.severity === 'warn')
+                          .length,
+                      errorCount:
+                        result.summary.errorCount +
+                        duplicateDiags.filter((d) => d.severity === 'error')
+                          .length,
+                    },
                   };
                 }
-                const output = `${JSON.stringify(jsonData, null, 2)}\n`;
-                io.stdout(output);
-                const written = writeIfRequested(result.config, output);
-                if (written) io.stdout(`Wrote ${written}\n`);
-              } else if (format === 'sarif') {
-                const output = `${JSON.stringify(toSarif(result), null, 2)}\n`;
-                io.stdout(output);
-                const written = writeIfRequested(result.config, output);
-                if (written) io.stdout(`Wrote ${written}\n`);
-              } else if (format === 'github') {
-                const output = toGitHubAnnotations(result);
-                if (output) io.stdout(output);
-              } else if (format === 'html') {
-                const html = renderHtml(result, scores);
+
+                const scores = computeSkillScores(
+                  result.skills,
+                  result.diagnostics,
+                );
+                const format = result.config.output.format;
+
+                let baselineDiff: BaselineDiff | undefined;
+                const baselinePath =
+                  typeof rawOptions.baseline === 'string'
+                    ? rawOptions.baseline
+                    : undefined;
+                if (baselinePath) {
+                  const baselineDiags = loadBaseline(
+                    path.resolve(process.cwd(), baselinePath),
+                  );
+                  baselineDiff = diffBaseline(
+                    result.diagnostics,
+                    baselineDiags,
+                  );
+                }
+
+                if (format === 'json') {
+                  const jsonData = toJson(result) as Record<string, unknown>;
+                  jsonData.scores = scores;
+                  if (baselineDiff) {
+                    jsonData.baseline = {
+                      new: baselineDiff.newDiagnostics.length,
+                      fixed: baselineDiff.fixedDiagnostics.length,
+                      unchanged: baselineDiff.unchanged.length,
+                    };
+                  }
+                  const output = `${JSON.stringify(jsonData, null, 2)}\n`;
+                  io.stdout(output);
+                  const written = writeIfRequested(result.config, output);
+                  if (written) io.stdout(`Wrote ${written}\n`);
+                } else if (format === 'sarif') {
+                  const output = `${JSON.stringify(toSarif(result), null, 2)}\n`;
+                  io.stdout(output);
+                  const written = writeIfRequested(result.config, output);
+                  if (written) io.stdout(`Wrote ${written}\n`);
+                } else if (format === 'github') {
+                  const output = toGitHubAnnotations(result);
+                  if (output) io.stdout(output);
+                } else if (format === 'html') {
+                  const html = renderHtml(result, scores);
+                  const reportPath =
+                    result.config.output.reportPath ??
+                    path.join(result.config.cwd, 'skill-check-report.html');
+                  const parent = path.dirname(reportPath);
+                  fs.mkdirSync(parent, { recursive: true });
+                  fs.writeFileSync(reportPath, html);
+                  const shouldOpen =
+                    Boolean(process.stdout.isTTY) &&
+                    !process.env.CI &&
+                    rawOptions.noOpen !== true;
+                  if (shouldOpen) {
+                    try {
+                      openInBrowser(reportPath);
+                    } catch {
+                      // ignore open failures
+                    }
+                  }
+                  io.stdout(`Wrote ${reportPath}\n`);
+                } else {
+                  if (fixSummary) {
+                    io.stdout(renderAutoFixSummary(fixSummary));
+                  }
+                  io.stdout(
+                    renderText(result, scores, {
+                      includeConclusion: false,
+                    }),
+                  );
+                }
+
+                if (baselineDiff && (format === 'text' || format === 'html')) {
+                  io.stdout(
+                    `${pc.bold('Baseline:')} ${pc.green(`${baselineDiff.fixedDiagnostics.length} fixed`)} ${pc.red(`${baselineDiff.newDiagnostics.length} new`)} ${pc.dim(`${baselineDiff.unchanged.length} unchanged`)}\n`,
+                  );
+                }
+
+                const validationExitCode = resolveExitCode(result);
+                let exitCode = validationExitCode;
+                if (format === 'html') {
+                  io.stdout(
+                    `${pc.bold('Validation:')} ${validationExitCode === 0 ? pc.green('PASS') : pc.red('FAIL')}\n`,
+                  );
+                }
+                let scanExitCode: number | undefined;
+                if (scanOptions.enabled) {
+                  scanExitCode = await runAgentScanWithFeedback(
+                    scanOptions,
+                    resolvedTarget.target,
+                    io,
+                    format,
+                  );
+                  if (format === 'html') {
+                    io.stdout(
+                      `${pc.bold('Security scan:')} ${scanExitCode === 0 ? pc.green('PASS') : pc.red('FAIL')}\n`,
+                    );
+                  }
+                  if (scanExitCode !== 0) {
+                    exitCode = 1;
+                  }
+                } else if (format === 'html') {
+                  io.stdout(
+                    `${pc.bold('Security scan:')} ${pc.yellow('SKIPPED')}\n`,
+                  );
+                }
+
+                if (format === 'text') {
+                  const conclusion = renderConclusionCard({
+                    skillCount: result.summary.skillCount,
+                    errorCount: result.summary.errorCount,
+                    warningCount: result.summary.warningCount,
+                    affectedFileCount: countAffectedFiles(result.diagnostics),
+                    overallScore: computeOverallScore(scores),
+                    validationStatus: resolveValidationStatus(result),
+                    securityStatus: resolveSecurityStatus(
+                      scanOptions.enabled,
+                      scanExitCode,
+                    ),
+                    elapsedMs: performance.now() - checkStartedAt,
+                    runCommand,
+                  });
+                  io.stdout(`${conclusion.card}\n`);
+                  if (conclusion.fullCommandPlain) {
+                    io.stdout(`${conclusion.fullCommandPlain}\n`);
+                  }
+                }
+
+                finalExitCode = exitCode;
+              },
+            );
+          },
+        ),
+    ),
+  );
+
+  addSharedOptions(
+    program
+      .command('report [target]')
+      .description('Generate markdown health report')
+      .option('--no-open', 'Do not open HTML report in browser')
+      .action(
+        async (
+          target: string | undefined,
+          rawOptions: Record<string, unknown>,
+        ) => {
+          const options = normalizeCliOptions(rawOptions);
+          await withResolvedTargetFeedback(
+            target,
+            io,
+            async (resolvedTarget) => {
+              const cwd = resolvedTarget.target ?? process.cwd();
+              const result = await analyze(cwd, resolvedTarget.target, options);
+              const format = result.config.output.format;
+              if (format === 'html') {
+                const html = renderHtml(result);
                 const reportPath =
                   result.config.output.reportPath ??
                   path.join(result.config.cwd, 'skill-check-report.html');
@@ -807,125 +1053,14 @@ export async function runCli(
                 }
                 io.stdout(`Wrote ${reportPath}\n`);
               } else {
-                if (fixSummary) {
-                  io.stdout(renderAutoFixSummary(fixSummary));
-                }
-                io.stdout(
-                  renderText(result, scores, {
-                    includeConclusion: false,
-                  }),
-                );
+                const markdown = renderMarkdownReport(result);
+                const written = writeIfRequested(result.config, markdown);
+                io.stdout(markdown);
+                if (written) io.stdout(`Wrote ${written}\n`);
               }
-
-              if (baselineDiff && (format === 'text' || format === 'html')) {
-                io.stdout(
-                  `${pc.bold('Baseline:')} ${pc.green(`${baselineDiff.fixedDiagnostics.length} fixed`)} ${pc.red(`${baselineDiff.newDiagnostics.length} new`)} ${pc.dim(`${baselineDiff.unchanged.length} unchanged`)}\n`,
-                );
-              }
-
-              const validationExitCode = resolveExitCode(result);
-              let exitCode = validationExitCode;
-              if (format === 'html') {
-                io.stdout(
-                  `${pc.bold('Validation:')} ${validationExitCode === 0 ? pc.green('PASS') : pc.red('FAIL')}\n`,
-                );
-              }
-              let scanExitCode: number | undefined;
-              if (scanOptions.enabled) {
-                scanExitCode = await runAgentScanWithFeedback(
-                  scanOptions,
-                  resolvedTarget.target,
-                  io,
-                  format,
-                );
-                if (format === 'html') {
-                  io.stdout(
-                    `${pc.bold('Security scan:')} ${scanExitCode === 0 ? pc.green('PASS') : pc.red('FAIL')}\n`,
-                  );
-                }
-                if (scanExitCode !== 0) {
-                  exitCode = 1;
-                }
-              } else if (format === 'html') {
-                io.stdout(
-                  `${pc.bold('Security scan:')} ${pc.yellow('SKIPPED')}\n`,
-                );
-              }
-
-              if (format === 'text') {
-                const conclusion = renderConclusionCard({
-                  skillCount: result.summary.skillCount,
-                  errorCount: result.summary.errorCount,
-                  warningCount: result.summary.warningCount,
-                  affectedFileCount: countAffectedFiles(result.diagnostics),
-                  overallScore: computeOverallScore(scores),
-                  validationStatus: resolveValidationStatus(result),
-                  securityStatus: resolveSecurityStatus(
-                    scanOptions.enabled,
-                    scanExitCode,
-                  ),
-                  elapsedMs: performance.now() - checkStartedAt,
-                  runCommand,
-                });
-                io.stdout(`${conclusion.card}\n`);
-                if (conclusion.fullCommandPlain) {
-                  io.stdout(`${conclusion.fullCommandPlain}\n`);
-                }
-              }
-
-              finalExitCode = exitCode;
-            });
-          },
-        ),
-    ),
-  );
-
-  addSharedOptions(
-    program
-      .command('report [target]')
-      .description('Generate markdown health report')
-      .option('--no-open', 'Do not open HTML report in browser')
-      .action(
-        async (
-          target: string | undefined,
-          rawOptions: Record<string, unknown>,
-        ) => {
-          const options = normalizeCliOptions(rawOptions);
-          await withResolvedTarget(target, async (resolvedTarget) => {
-            const result = await analyze(
-              process.cwd(),
-              resolvedTarget.target,
-              options,
-            );
-            const format = result.config.output.format;
-            if (format === 'html') {
-              const html = renderHtml(result);
-              const reportPath =
-                result.config.output.reportPath ??
-                path.join(result.config.cwd, 'skill-check-report.html');
-              const parent = path.dirname(reportPath);
-              fs.mkdirSync(parent, { recursive: true });
-              fs.writeFileSync(reportPath, html);
-              const shouldOpen =
-                Boolean(process.stdout.isTTY) &&
-                !process.env.CI &&
-                rawOptions.noOpen !== true;
-              if (shouldOpen) {
-                try {
-                  openInBrowser(reportPath);
-                } catch {
-                  // ignore open failures
-                }
-              }
-              io.stdout(`Wrote ${reportPath}\n`);
-            } else {
-              const markdown = renderMarkdownReport(result);
-              const written = writeIfRequested(result.config, markdown);
-              io.stdout(markdown);
-              if (written) io.stdout(`Wrote ${written}\n`);
-            }
-            finalExitCode = resolveExitCode(result);
-          });
+              finalExitCode = resolveExitCode(result);
+            },
+          );
         },
       ),
   );
@@ -945,15 +1080,19 @@ export async function runCli(
           });
           maybeRenderBanner('text');
 
-          await withResolvedTarget(target, async (resolvedTarget) => {
-            const scanExitCode = await runAgentScanWithFeedback(
-              scanOptions,
-              resolvedTarget.target,
-              io,
-              'text',
-            );
-            finalExitCode = scanExitCode === 0 ? 0 : 1;
-          });
+          await withResolvedTargetFeedback(
+            target,
+            io,
+            async (resolvedTarget) => {
+              const scanExitCode = await runAgentScanWithFeedback(
+                scanOptions,
+                resolvedTarget.target,
+                io,
+                'text',
+              );
+              finalExitCode = scanExitCode === 0 ? 0 : 1;
+            },
+          );
         },
       ),
   );

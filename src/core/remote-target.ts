@@ -22,6 +22,29 @@ export interface MaterializedRemoteTarget {
   };
 }
 
+export type RemoteTargetProgressEvent =
+  | {
+      type: 'clone_start';
+      cloneUrl: string;
+      ref?: string;
+    }
+  | {
+      type: 'clone_done';
+      checkoutPath: string;
+    }
+  | {
+      type: 'subpath_start';
+      subpath: string;
+    }
+  | {
+      type: 'ready';
+      targetPath: string;
+    }
+  | {
+      type: 'failed';
+      message: string;
+    };
+
 interface CommandResult {
   status: number | null;
   stdout: string;
@@ -40,6 +63,7 @@ interface MaterializeDeps {
   mkdtempSync?: (prefix: string) => string;
   removeDir?: (target: string) => void;
   pathExists?: (target: string) => boolean;
+  onProgress?: (event: RemoteTargetProgressEvent) => void;
 }
 
 function decodePathPart(value: string, label: string): string {
@@ -185,7 +209,15 @@ export function materializeRemoteTarget(
   input: string,
   deps: MaterializeDeps = {},
 ): MaterializedRemoteTarget {
-  const parsed = parseGitHubTarget(input);
+  const onProgress = deps.onProgress;
+  let parsed: ParsedGitHubTarget;
+  try {
+    parsed = parseGitHubTarget(input);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    onProgress?.({ type: 'failed', message });
+    throw error;
+  }
   const mkdtempSync =
     deps.mkdtempSync ?? ((prefix: string) => fs.mkdtempSync(prefix));
   const removeDir =
@@ -207,6 +239,11 @@ export function materializeRemoteTarget(
       cloneArgs.push('--branch', parsed.ref, '--single-branch');
     }
     cloneArgs.push(parsed.cloneUrl, checkoutPath);
+    onProgress?.({
+      type: 'clone_start',
+      cloneUrl: parsed.cloneUrl,
+      ref: parsed.ref,
+    });
 
     const result = runCommand('git', cloneArgs);
     if (result.error?.code === 'ENOENT') {
@@ -228,6 +265,10 @@ export function materializeRemoteTarget(
         2,
       );
     }
+    onProgress?.({
+      type: 'clone_done',
+      checkoutPath,
+    });
 
     if (!pathExists(checkoutPath)) {
       throw new CliError(
@@ -238,6 +279,10 @@ export function materializeRemoteTarget(
 
     let targetPath = checkoutPath;
     if (parsed.subpath) {
+      onProgress?.({
+        type: 'subpath_start',
+        subpath: parsed.subpath,
+      });
       const resolvedSubpath = path.resolve(checkoutPath, parsed.subpath);
       ensureWithinCheckout(checkoutPath, resolvedSubpath);
       if (!pathExists(resolvedSubpath)) {
@@ -248,6 +293,10 @@ export function materializeRemoteTarget(
       }
       targetPath = resolvedSubpath;
     }
+    onProgress?.({
+      type: 'ready',
+      targetPath,
+    });
 
     return {
       path: targetPath,
@@ -259,6 +308,11 @@ export function materializeRemoteTarget(
       },
     };
   } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    onProgress?.({
+      type: 'failed',
+      message,
+    });
     cleanup();
     throw error;
   }

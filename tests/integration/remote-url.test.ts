@@ -34,18 +34,37 @@ describe('CLI remote URL targets', () => {
   it('materializes a GitHub URL for check command', async () => {
     const remoteUrl = 'https://github.com/acme/repo';
     const cleanup = vi.fn();
-    const materializeRemoteTarget = vi.fn(() => ({
-      path: path.join(fixturesRoot, 'pass/basic'),
-      cleanup,
-      metadata: {
-        originalUrl: remoteUrl,
-        owner: 'acme',
-        repo: 'repo',
-        cloneUrl: 'https://github.com/acme/repo.git',
-        tempDir: '/tmp/remote-1',
-        checkoutPath: '/tmp/remote-1/repo',
+    const materializeRemoteTarget = vi.fn(
+      (
+        _input: string,
+        deps?: { onProgress?: (event: Record<string, unknown>) => void },
+      ) => {
+        deps?.onProgress?.({
+          type: 'clone_start',
+          cloneUrl: 'https://github.com/acme/repo.git',
+        });
+        deps?.onProgress?.({
+          type: 'clone_done',
+          checkoutPath: '/tmp/remote-1/repo',
+        });
+        deps?.onProgress?.({
+          type: 'ready',
+          targetPath: path.join(fixturesRoot, 'pass/basic'),
+        });
+        return {
+          path: path.join(fixturesRoot, 'pass/basic'),
+          cleanup,
+          metadata: {
+            originalUrl: remoteUrl,
+            owner: 'acme',
+            repo: 'repo',
+            cloneUrl: 'https://github.com/acme/repo.git',
+            tempDir: '/tmp/remote-1',
+            checkoutPath: '/tmp/remote-1/repo',
+          },
+        };
       },
-    }));
+    );
 
     vi.doMock('../../src/core/remote-target.js', () => ({
       isGitHubRepoUrl: (value: string) =>
@@ -54,17 +73,26 @@ describe('CLI remote URL targets', () => {
     }));
 
     const { runCli } = await import('../../src/cli/main.js');
-    const { io, stdout } = createIO();
+    const { io, stdout, stderr } = createIO();
     const code = await runCli(['check', remoteUrl, '--no-security-scan'], io);
 
     expect(code).toBe(0);
-    expect(materializeRemoteTarget).toHaveBeenCalledWith(remoteUrl);
+    expect(materializeRemoteTarget).toHaveBeenCalledWith(
+      remoteUrl,
+      expect.objectContaining({
+        onProgress: expect.any(Function),
+      }),
+    );
     expect(cleanup).toHaveBeenCalledTimes(1);
     const output = stripAnsi(stdout.join(''));
     expect(output).toContain('run: npx skill-check check');
     expect(output).toContain(
       `npx skill-check check ${remoteUrl} --no-security-scan`,
     );
+    const err = stripAnsi(stderr.join(''));
+    expect(err).toContain('[remote] Preparing remote target:');
+    expect(err).toContain('[remote] Cloning https://github.com/acme/repo.git');
+    expect(err).toContain('[remote] Remote target ready:');
   });
 
   it('rejects --fix for GitHub URL targets', async () => {
@@ -197,5 +225,58 @@ describe('CLI remote URL targets', () => {
     expect(output).toContain('full command below');
     expect(output).toContain(fullCommand);
     expect(output).toContain('…');
+  });
+
+  it('keeps json stdout parseable and writes remote loader to stderr', async () => {
+    const remoteUrl = 'https://github.com/acme/repo';
+    const cleanup = vi.fn();
+    const materializeRemoteTarget = vi.fn(
+      (
+        _input: string,
+        deps?: { onProgress?: (event: Record<string, unknown>) => void },
+      ) => {
+        deps?.onProgress?.({
+          type: 'clone_start',
+          cloneUrl: 'https://github.com/acme/repo.git',
+        });
+        deps?.onProgress?.({
+          type: 'ready',
+          targetPath: path.join(fixturesRoot, 'pass/basic'),
+        });
+        return {
+          path: path.join(fixturesRoot, 'pass/basic'),
+          cleanup,
+          metadata: {
+            originalUrl: remoteUrl,
+            owner: 'acme',
+            repo: 'repo',
+            cloneUrl: 'https://github.com/acme/repo.git',
+            tempDir: '/tmp/remote-json',
+            checkoutPath: '/tmp/remote-json/repo',
+          },
+        };
+      },
+    );
+
+    vi.doMock('../../src/core/remote-target.js', () => ({
+      isGitHubRepoUrl: (value: string) =>
+        value.startsWith('https://github.com/'),
+      materializeRemoteTarget,
+    }));
+
+    const { runCli } = await import('../../src/cli/main.js');
+    const { io, stdout, stderr } = createIO();
+    const code = await runCli(
+      ['check', remoteUrl, '--format', 'json', '--no-security-scan'],
+      io,
+    );
+
+    expect(code).toBe(0);
+    expect(() => JSON.parse(stdout.join(''))).not.toThrow();
+    const err = stripAnsi(stderr.join(''));
+    expect(err).toContain('[remote] Preparing remote target:');
+    expect(err).toContain('[remote] Cloning https://github.com/acme/repo.git');
+    expect(err).toContain('[remote] Remote target ready:');
+    expect(cleanup).toHaveBeenCalledTimes(1);
   });
 });

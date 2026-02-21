@@ -84,6 +84,8 @@ npx skill-check https://github.com/thedaviddias/skill-check --no-security-scan
 npx skill-check https://github.com/thedaviddias/skill-check/tree/main/skills --no-security-scan
 ```
 
+Remote URL runs show clone/resolve progress on stderr (spinner in TTY, `[remote]` lines in CI/non-TTY).
+
 `--fix` is local-only for now when using GitHub URLs.
 
 Apply safe automatic fixes:

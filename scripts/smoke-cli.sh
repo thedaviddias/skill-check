@@ -113,7 +113,15 @@ set +e
 run_cli check "${ROOT_DIR}/fixtures/fail/multi-mixed" --format html --no-open --no-security-scan
 HTML_FAIL_CODE=$?
 set -e
-mv "${ROOT_DIR}/skill-check-report.html" "${OUTPUT_DIR}/check-fail-multi-mixed.html"
+HTML_REPORT_SOURCE="${ROOT_DIR}/fixtures/fail/multi-mixed/skill-check-report.html"
+if [[ ! -f "${HTML_REPORT_SOURCE}" ]]; then
+  HTML_REPORT_SOURCE="${ROOT_DIR}/skill-check-report.html"
+fi
+if [[ ! -f "${HTML_REPORT_SOURCE}" ]]; then
+  echo "Expected HTML report file was not generated." >&2
+  exit 1
+fi
+mv "${HTML_REPORT_SOURCE}" "${OUTPUT_DIR}/check-fail-multi-mixed.html"
 if [[ ${HTML_FAIL_CODE} -ne 1 ]]; then
   echo "Expected failing HTML run to exit 1, got ${HTML_FAIL_CODE}" >&2
   exit 1

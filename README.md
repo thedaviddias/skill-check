@@ -214,6 +214,7 @@ Remote URL scanning behavior:
 
 - Creates an ephemeral shallow clone (`git clone --depth 1`) in a temp directory.
 - Cleans up the checkout automatically after the command finishes.
+- Shows remote preparation progress on stderr (spinner in TTY, `[remote]` status lines in non-TTY/CI).
 - Keeps security scan enabled by default (same as local path behavior).
 - Does not support `--fix` for URL targets (read-only workflow).
 - `watch` and `diff` are local-path only in this version.
