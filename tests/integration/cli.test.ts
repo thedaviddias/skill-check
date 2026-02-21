@@ -461,7 +461,7 @@ describe('CLI integration', () => {
       path.join(os.tmpdir(), 'skill-check-share-'),
     );
     const sharePath = path.join(shareDir, 'card.png');
-    const { io, stdout } = createIO();
+    const { io, stdout, stderr } = createIO();
     const code = await runCli(
       [
         'check',
@@ -483,6 +483,11 @@ describe('CLI integration', () => {
     expect(output).toContain(`Share image: ${sharePath}`);
     expect(output).not.toContain('SKILL-CHECK VALIDATION REPORT');
     expect(fs.existsSync(sharePath)).toBe(true);
+
+    const progress = stripAnsi(stderr.join(''));
+    expect(progress).toContain('share: validating skills...');
+    expect(progress).toContain('share: security scan skipped.');
+    expect(progress).toContain('share: rendering share image...');
   });
 
   it('rejects --share with non-text format', async () => {

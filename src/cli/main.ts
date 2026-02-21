@@ -657,6 +657,10 @@ function shouldRenderBanner(io: CliIO, format: OutputFormat): boolean {
   );
 }
 
+function emitShareStatus(io: CliIO, message: string): void {
+  io.stderr(`${pc.dim(`share: ${message}`)}\n`);
+}
+
 function renderAsciiBanner(): string {
   const art = [
     '  ____  _  _____ _     _        ____ _   _ _____ ____ _  __',
@@ -732,6 +736,35 @@ async function runValidationPipeline(
     throw new CliError('Validation pipeline did not produce a result.', 2);
   }
   return context.result;
+}
+
+async function runValidationForShare(
+  cwd: string,
+  config: ResolvedConfig,
+  io: CliIO,
+): Promise<AnalysisResult> {
+  const interactiveUi = shouldUseInteractiveUi(io);
+  if (interactiveUi) {
+    const spinner = ora('Preparing share output: validating skills...').start();
+    try {
+      const result = await analyzeWithConfig(cwd, config);
+      spinner.succeed(
+        `Validated ${result.summary.skillCount} skill(s); diagnostics ${result.diagnostics.length}.`,
+      );
+      return result;
+    } catch (error) {
+      spinner.fail('Validation failed.');
+      throw error;
+    }
+  }
+
+  emitShareStatus(io, 'validating skills...');
+  const result = await analyzeWithConfig(cwd, config);
+  emitShareStatus(
+    io,
+    `validated ${result.summary.skillCount} skill(s); diagnostics ${result.diagnostics.length}.`,
+  );
+  return result;
 }
 
 async function runAgentScanWithFeedback(
@@ -913,11 +946,18 @@ export async function runCli(
                 if (checkOptions.shareOut && !checkOptions.share) {
                   throw new CliError('--share-out requires --share.', 2);
                 }
-                let result = await runValidationPipeline(
-                  cwd,
-                  config,
-                  shouldUseInteractiveUi(io),
-                );
+                const runValidation = async (): Promise<AnalysisResult> => {
+                  if (checkOptions.share) {
+                    return runValidationForShare(cwd, config, io);
+                  }
+                  return runValidationPipeline(
+                    cwd,
+                    config,
+                    shouldUseInteractiveUi(io),
+                  );
+                };
+
+                let result = await runValidation();
                 let fixSummary: AutoFixSummary | undefined;
 
                 if (checkOptions.fix) {
@@ -946,11 +986,7 @@ export async function runCli(
                     fixSummary = applyAutoFixes(result);
                   }
                   if (fixSummary.appliedFixes > 0) {
-                    result = await runValidationPipeline(
-                      cwd,
-                      config,
-                      shouldUseInteractiveUi(io),
-                    );
+                    result = await runValidation();
                   }
                 }
 
@@ -1064,6 +1100,9 @@ export async function runCli(
                 }
                 let scanExitCode: number | undefined;
                 if (scanOptions.enabled) {
+                  if (checkOptions.share) {
+                    emitShareStatus(io, 'running security scan...');
+                  }
                   const effectiveScanOptions = withInferredSecurityScanSkills(
                     scanOptions,
                     result.skills.map((skill) => skill.filePath),
@@ -1082,10 +1121,18 @@ export async function runCli(
                   if (scanExitCode !== 0) {
                     exitCode = 1;
                   }
+                  if (checkOptions.share) {
+                    emitShareStatus(
+                      io,
+                      `security scan ${scanExitCode === 0 ? 'passed' : 'reported findings'}.`,
+                    );
+                  }
                 } else if (format === 'html') {
                   io.stdout(
                     `${pc.bold('Security scan:')} ${pc.yellow('SKIPPED')}\n`,
                   );
+                } else if (checkOptions.share) {
+                  emitShareStatus(io, 'security scan skipped.');
                 }
 
                 if (format === 'text') {
@@ -1109,6 +1156,7 @@ export async function runCli(
                     io.stdout(`${conclusion.fullCommandPlain}\n`);
                   }
                   if (checkOptions.share) {
+                    emitShareStatus(io, 'rendering share image...');
                     const shareOutputPath = path.resolve(
                       process.cwd(),
                       checkOptions.shareOut ?? 'skill-check-share.png',
@@ -1121,6 +1169,7 @@ export async function runCli(
                       shareOutputPath,
                     );
                     io.stdout(`${pc.bold('Share image:')} ${writtenPath}\n`);
+                    emitShareStatus(io, `share image written: ${writtenPath}`);
                   }
                 }
 
