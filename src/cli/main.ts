@@ -338,6 +338,11 @@ function createRemoteTargetLoader(io: CliIO): RemoteTargetLoader {
     write(`[remote] ${message}`);
   };
 
+  const writeSpinnerPersistentLine = (message: string): void => {
+    if (!spinner) return;
+    write(`[remote] ${message}`);
+  };
+
   const succeed = (message: string): void => {
     if (finished) return;
     if (spinner) {
@@ -368,20 +373,28 @@ function createRemoteTargetLoader(io: CliIO): RemoteTargetLoader {
 
   return {
     start: (url: string) => {
-      update(`Preparing remote target: ${url}`);
+      const message = `Preparing remote target: ${url}`;
+      writeSpinnerPersistentLine(message);
+      update(message);
     },
     onProgress: (event: RemoteTargetProgressEvent) => {
       if (event.type === 'clone_start') {
         const refLabel = event.ref ? ` (ref: ${event.ref})` : '';
-        update(`Cloning ${event.cloneUrl}${refLabel}`);
+        const message = `Cloning ${event.cloneUrl}${refLabel}`;
+        writeSpinnerPersistentLine(message);
+        update(message);
         return;
       }
       if (event.type === 'clone_done') {
-        update(`Clone complete: ${event.checkoutPath}`);
+        const message = `Clone complete: ${event.checkoutPath}`;
+        writeSpinnerPersistentLine(message);
+        update(message);
         return;
       }
       if (event.type === 'subpath_start') {
-        update(`Resolving subpath: ${event.subpath}`);
+        const message = `Resolving subpath: ${event.subpath}`;
+        writeSpinnerPersistentLine(message);
+        update(message);
         return;
       }
       if (event.type === 'ready') {
