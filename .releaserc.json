@@ -9,7 +9,10 @@
       }
     ],
     "@semantic-release/npm",
-    ["@semantic-release/github", { "labels": false }],
+    [
+      "@semantic-release/github",
+      { "failTitle": false, "failComment": false, "labels": false }
+    ],
     [
       "@semantic-release/git",
       {
