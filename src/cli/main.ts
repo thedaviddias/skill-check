@@ -17,12 +17,14 @@ import ora from 'ora';
 import pc from 'picocolors';
 import {
   type AgentScanInvocation,
+  type AgentScanOutputSummary,
   type AgentScanRunner,
   deriveAgentScanSkillRoots,
   isCommandAvailable,
   isValidAgentScanRunner,
   resolveAgentScanInvocation,
   runAgentScan,
+  summarizeAgentScanOutput,
 } from '../core/agent-scan.js';
 import {
   analyze,
@@ -166,6 +168,7 @@ function addAgentScanOptions(command: Command): Command {
       collectList,
       [],
     )
+    .option('--security-scan-verbose', 'Show full raw security scanner output')
     .option(
       '--allow-installs',
       'Allow automatic dependency installs for security scan runners',
@@ -211,6 +214,7 @@ interface AgentScanCliOptions {
   mode: string;
   paths?: string[];
   skills?: string[];
+  verbose: boolean;
   installPolicy: 'allow' | 'deny';
 }
 
@@ -630,6 +634,7 @@ function normalizeAgentScanOptions(
     mode,
     paths: selectedPaths,
     skills: selectedSkills,
+    verbose: raw.securityScanVerbose === true,
     installPolicy: denyInstalls ? 'deny' : 'allow',
   };
 }
@@ -659,6 +664,49 @@ function shouldRenderBanner(io: CliIO, format: OutputFormat): boolean {
 
 function emitShareStatus(io: CliIO, message: string): void {
   io.stderr(`${pc.dim(`share: ${message}`)}\n`);
+}
+
+function renderAgentScanCompactSummary(
+  summary: AgentScanOutputSummary,
+  verboseHint = true,
+): string {
+  const lines: string[] = [];
+
+  if (summary.noSkillsOrServers) {
+    lines.push(
+      `${pc.bold('Security scan summary:')} ${pc.yellow('no servers or skills found')}`,
+    );
+  } else {
+    const skillsValue =
+      typeof summary.skillsFound === 'number'
+        ? String(summary.skillsFound)
+        : 'unknown';
+    const targetText = summary.scannedTarget
+      ? pc.dim(summary.scannedTarget)
+      : pc.dim('(unknown target)');
+    lines.push(
+      `${pc.bold('Security scan summary:')} skills=${pc.cyan(skillsValue)} target=${targetText}`,
+    );
+  }
+
+  const codes = Object.entries(summary.findingsByCode)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([code, count]) => `${code}:${count}`);
+  if (summary.findingsTotal > 0) {
+    lines.push(
+      `${pc.bold('Findings:')} ${pc.yellow(String(summary.findingsTotal))}${codes.length > 0 ? ` ${pc.dim(`(${codes.join(', ')})`)}` : ''}`,
+    );
+  } else {
+    lines.push(`${pc.bold('Findings:')} ${pc.green('0')}`);
+  }
+
+  if (verboseHint) {
+    lines.push(
+      pc.dim('Use --security-scan-verbose to view full scanner output.'),
+    );
+  }
+
+  return `${lines.join('\n')}\n`;
 }
 
 function renderAsciiBanner(): string {
@@ -798,20 +846,39 @@ async function runAgentScanWithFeedback(
   }
 
   try {
-    const exitCode = runAgentScan({
+    const scanResult = runAgentScan({
       cwd: process.cwd(),
       targetPath: target,
       mode: scanOptions.mode,
       runner: scanOptions.runner,
       paths: scanOptions.paths,
       skills: scanOptions.skills,
+      verbose: scanOptions.verbose,
     });
+    const exitCode = scanResult.status;
 
     if (useInteractiveFeedback) {
       if (exitCode === 0) {
         ora().succeed('Security scan completed without blocking findings.');
       } else {
         ora().warn('Security scan reported findings.');
+      }
+    }
+
+    if (!scanOptions.verbose && format === 'text') {
+      const combinedOutput =
+        `${scanResult.stdout}\n${scanResult.stderr}`.trim();
+      const summary = summarizeAgentScanOutput(combinedOutput);
+      io.stdout(renderAgentScanCompactSummary(summary));
+    }
+    if (!scanOptions.verbose && format !== 'text' && exitCode !== 0) {
+      const combinedOutput =
+        `${scanResult.stdout}\n${scanResult.stderr}`.trim();
+      if (combinedOutput) {
+        const tail = combinedOutput.split(/\r?\n/).slice(-8).join('\n').trim();
+        if (tail) {
+          io.stderr(`${tail}\n`);
+        }
       }
     }
 
@@ -1120,12 +1187,6 @@ export async function runCli(
                   }
                   if (scanExitCode !== 0) {
                     exitCode = 1;
-                  }
-                  if (checkOptions.share) {
-                    emitShareStatus(
-                      io,
-                      `security scan ${scanExitCode === 0 ? 'passed' : 'reported findings'}.`,
-                    );
                   }
                 } else if (format === 'html') {
                   io.stdout(

@@ -108,13 +108,7 @@ export function renderShareImageSvg(cardText: string): string {
 
   return [
     `<svg xmlns="http://www.w3.org/2000/svg" width="${canvasWidth}" height="${canvasHeight}" viewBox="0 0 ${canvasWidth} ${canvasHeight}" role="img" aria-label="skill-check share card">`,
-    '  <defs>',
-    '    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">',
-    '      <stop offset="0%" stop-color="#0a1020"/>',
-    '      <stop offset="100%" stop-color="#141a2b"/>',
-    '    </linearGradient>',
-    '  </defs>',
-    '  <rect width="100%" height="100%" fill="url(#bg)"/>',
+    '  <rect width="100%" height="100%" fill="#0d1117"/>',
     lineElements,
     '</svg>',
     '',

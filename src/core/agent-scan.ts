@@ -13,11 +13,27 @@ export interface AgentScanOptions {
   paths?: string[];
   skills?: string[];
   runner?: AgentScanRunner;
+  verbose?: boolean;
 }
 
 export interface AgentScanInvocation {
   command: string;
   args: string[];
+}
+
+export interface AgentScanRunResult {
+  status: number;
+  stdout: string;
+  stderr: string;
+  invocation: AgentScanInvocation;
+}
+
+export interface AgentScanOutputSummary {
+  scannedTarget?: string;
+  skillsFound?: number;
+  findingsTotal: number;
+  findingsByCode: Record<string, number>;
+  noSkillsOrServers: boolean;
 }
 
 export function deriveAgentScanSkillRoots(skillFilePaths: string[]): string[] {
@@ -133,11 +149,45 @@ export function resolveAgentScanInvocation(
   );
 }
 
-export function runAgentScan(options: AgentScanOptions): number {
+export function summarizeAgentScanOutput(
+  rawOutput: string,
+): AgentScanOutputSummary {
+  const output = rawOutput.replace(/\r/g, '');
+  const scanMatch = output.match(
+    /●\s+Scanning\s+(.+?)\s+found\s+(\d+)\s+skills?/i,
+  );
+  const codeMatches = Array.from(output.matchAll(/\[([A-Z]\d{3})\]/g)).map(
+    (match) => match[1],
+  );
+  const findingsByCode: Record<string, number> = {};
+  for (const code of codeMatches) {
+    if (!code) continue;
+    findingsByCode[code] = (findingsByCode[code] ?? 0) + 1;
+  }
+  const findingsTotal = Object.values(findingsByCode).reduce(
+    (sum, count) => sum + count,
+    0,
+  );
+
+  return {
+    scannedTarget: scanMatch?.[1]?.trim(),
+    skillsFound: scanMatch?.[2] ? Number.parseInt(scanMatch[2], 10) : undefined,
+    findingsTotal,
+    findingsByCode,
+    noSkillsOrServers: /no servers or skills found/i.test(output),
+  };
+}
+
+export function runAgentScan(options: AgentScanOptions): AgentScanRunResult {
   const invocation = resolveAgentScanInvocation(options);
-  const result = spawnSync(invocation.command, invocation.args, {
-    stdio: 'inherit',
-  });
+  const result = options.verbose
+    ? spawnSync(invocation.command, invocation.args, {
+        stdio: 'inherit',
+      })
+    : spawnSync(invocation.command, invocation.args, {
+        stdio: ['ignore', 'pipe', 'pipe'],
+        encoding: 'utf8',
+      });
 
   const error = result.error as NodeJS.ErrnoException | undefined;
   if (error?.code === 'ENOENT') {
@@ -153,5 +203,10 @@ export function runAgentScan(options: AgentScanOptions): number {
     throw new CliError('Security scan process did not return an exit code.', 2);
   }
 
-  return result.status;
+  return {
+    status: result.status,
+    stdout: typeof result.stdout === 'string' ? result.stdout : '',
+    stderr: typeof result.stderr === 'string' ? result.stderr : '',
+    invocation,
+  };
 }

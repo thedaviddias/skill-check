@@ -170,6 +170,7 @@ Run security scan without UV:
 ```bash
 npx skill-check security-scan . --security-scan-runner pipx
 npx skill-check security-scan . --security-scan-runner pipx --no-installs
+npx skill-check security-scan . --security-scan-runner pipx --security-scan-verbose
 ```
 
 ## GitHub Action Quickstart

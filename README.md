@@ -50,6 +50,7 @@ brew install skill-check
 | `--share-out <path>` | Save a share image file (default: `./skill-check-share.png`) |
 | `--no-open` | Skip auto-opening HTML reports |
 | `--no-security-scan` | Skip the security scan |
+| `--security-scan-verbose` | Show full raw `agent-scan` output (default is compact summary) |
 | `--strict` | Treat warnings as errors |
 | `--lenient` | Relax selected strict rules |
 | `--fail-on-warning` | Exit non-zero when warnings exist |
@@ -140,6 +141,7 @@ npx skill-check check ~/.claude/skills
 `check` runs the security scan by default.
 If dependencies are missing, `skill-check` automatically installs scanner dependencies by default.
 Use `--no-installs` to hard-block automatic installs.
+By default, `skill-check` prints a compact security summary; use `--security-scan-verbose` for full scanner details.
 
 Run security scan without UV by forcing `pipx`:
 

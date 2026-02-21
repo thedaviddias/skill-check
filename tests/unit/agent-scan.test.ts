@@ -4,6 +4,7 @@ import {
   deriveAgentScanSkillRoots,
   isValidAgentScanRunner,
   resolveAgentScanInvocation,
+  summarizeAgentScanOutput,
 } from '../../src/core/agent-scan.js';
 
 describe('security scan integration', () => {
@@ -100,5 +101,35 @@ describe('security scan integration', () => {
 
     expect(roots[0]).toBe('/tmp/repo/.agents/skills');
     expect(roots[1]).toBe('/tmp/repo/docs/skills');
+  });
+
+  it('summarizes scanner output findings and scan target', () => {
+    const summary = summarizeAgentScanOutput(`
+Invariant MCP-scan v0.4.2
+● Scanning /tmp/repo/.agents/skills found 6 skills
+│
+├── demo
+│   ● [W007]: Insecure credential handling detected
+└── other
+    ● [W011]: Third-party content exposure detected
+`);
+
+    expect(summary.scannedTarget).toBe('/tmp/repo/.agents/skills');
+    expect(summary.skillsFound).toBe(6);
+    expect(summary.findingsTotal).toBe(2);
+    expect(summary.findingsByCode).toEqual({
+      W007: 1,
+      W011: 1,
+    });
+    expect(summary.noSkillsOrServers).toBe(false);
+  });
+
+  it('detects scanner no-skills message', () => {
+    const summary = summarizeAgentScanOutput(
+      '● Scanning /tmp/repo no servers or skills found',
+    );
+
+    expect(summary.noSkillsOrServers).toBe(true);
+    expect(summary.findingsTotal).toBe(0);
   });
 });
