@@ -1,3 +1,8 @@
+---
+name: split-into-references
+description: "Use when skill-check reports body.max_lines on a SKILL.md and you need to modularize it into maintainable references/*.md files. Activate when the user says 'split this skill,' 'skill is too long,' 'extract sections to references,' or 'run split-body.'"
+---
+
 # split-into-references
 
 ## Use when
