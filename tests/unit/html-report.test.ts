@@ -19,6 +19,7 @@ function makeResult(overrides: Partial<AnalysisResult> = {}): AnalysisResult {
         maxCompatibilityChars: 500,
       },
       rules: {},
+      frontmatter: { extraKnownFields: [] },
       allowlist: [],
       plugins: [],
       output: { format: 'html' },

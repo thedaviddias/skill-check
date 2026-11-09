@@ -145,17 +145,21 @@ export const frontmatterRules: RuleDefinition[] = [
     description:
       'Frontmatter should only contain spec-defined fields (name, description, license, compatibility, metadata, allowed-tools).',
     defaultSeverity: 'warn',
-    evaluate(skill) {
+    evaluate(skill, context) {
       if (!skill.frontmatter) return [];
+      const known = new Set([
+        ...KNOWN_FRONTMATTER_FIELDS,
+        ...context.config.frontmatter.extraKnownFields,
+      ]);
       const unknown = Object.keys(skill.frontmatter).filter(
-        (key) => !KNOWN_FRONTMATTER_FIELDS.has(key),
+        (key) => !known.has(key),
       );
       if (unknown.length === 0) return [];
       const plural = unknown.length === 1 ? 'field' : 'fields';
       return [
         {
           message: `unknown frontmatter ${plural}: ${unknown.join(', ')}`,
-          suggestion: `The spec defines: ${[...KNOWN_FRONTMATTER_FIELDS].join(', ')}. Remove or rename unrecognized fields.`,
+          suggestion: `Known fields: ${[...known].join(', ')}. Remove or rename unrecognized fields, or list them in frontmatter.extraKnownFields.`,
         },
       ];
     },

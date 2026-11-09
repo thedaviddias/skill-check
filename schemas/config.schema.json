@@ -28,6 +28,16 @@
       },
       "additionalProperties": false
     },
+    "frontmatter": {
+      "type": "object",
+      "properties": {
+        "extraKnownFields": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      },
+      "additionalProperties": false
+    },
     "rules": {
       "type": "object",
       "additionalProperties": {

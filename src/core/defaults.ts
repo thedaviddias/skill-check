@@ -1,4 +1,9 @@
-import type { LimitsConfig, OutputConfig, RuleLevel } from '../types.js';
+import type {
+  FrontmatterConfig,
+  LimitsConfig,
+  OutputConfig,
+  RuleLevel,
+} from '../types.js';
 
 export const DEFAULT_INCLUDE = ['**/SKILL.md'];
 
@@ -19,6 +24,10 @@ export const DEFAULT_LIMITS: LimitsConfig = {
   maxBodyTokens: 5000,
   maxNameChars: 64,
   maxCompatibilityChars: 500,
+};
+
+export const DEFAULT_FRONTMATTER: FrontmatterConfig = {
+  extraKnownFields: [],
 };
 
 export const DEFAULT_OUTPUT: OutputConfig = {

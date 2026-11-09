@@ -13,6 +13,9 @@ Default config file: `skill-check.config.json`
     "minDescriptionChars": 50,
     "maxBodyTokens": 5000
   },
+  "frontmatter": {
+    "extraKnownFields": ["disable-model-invocation"]
+  },
   "rules": {
     "description.use_when_phrase": "warn",
     "body.max_tokens": "warn"
@@ -45,6 +48,24 @@ Set `output.format` in config or use `--format` on the CLI:
 | `minDescriptionChars` | 50 | Recommended minimum description length |
 | `maxBodyLines` | 500 | Maximum body line count |
 | `maxBodyTokens` | 5000 | Maximum body token estimate (whitespace-split) |
+
+## Frontmatter
+
+`frontmatter.unknown_fields` warns on any frontmatter key outside the spec set
+(`name`, `description`, `license`, `compatibility`, `metadata`, `allowed-tools`).
+Agent harnesses add their own fields on top of the spec. List them in
+`frontmatter.extraKnownFields` so they stop warning while typos such as
+`allowed_tools` still do:
+
+```json
+{
+  "frontmatter": {
+    "extraKnownFields": ["disable-model-invocation"]
+  }
+}
+```
+
+`extraKnownFields` must be an array of strings and defaults to `[]`.
 
 ## Allowlist
 
