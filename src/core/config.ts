@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type {
   CliOptions,
+  FrontmatterConfig,
   LimitsConfig,
   OutputConfig,
   ResolvedConfig,
@@ -9,6 +10,7 @@ import type {
 } from '../types.js';
 import {
   DEFAULT_EXCLUDE,
+  DEFAULT_FRONTMATTER,
   DEFAULT_INCLUDE,
   DEFAULT_LIMITS,
   DEFAULT_OUTPUT,
@@ -20,6 +22,7 @@ type UserConfig = {
   include?: string[];
   exclude?: string[];
   limits?: Partial<LimitsConfig>;
+  frontmatter?: Partial<FrontmatterConfig>;
   rules?: Record<string, RuleLevel>;
   allowlist?: string[];
   plugins?: string[];
@@ -58,6 +61,7 @@ function validateConfigShape(config: unknown, sourcePath?: string): UserConfig {
     'include',
     'exclude',
     'limits',
+    'frontmatter',
     'rules',
     'allowlist',
     'plugins',
@@ -121,6 +125,32 @@ function validateConfigShape(config: unknown, sourcePath?: string): UserConfig {
     }
   }
 
+  if (config.frontmatter !== undefined) {
+    if (!isObjectRecord(config.frontmatter)) {
+      throw new CliError(
+        `Invalid config${sourcePath ? ` (${sourcePath})` : ''}: frontmatter must be an object`,
+        2,
+      );
+    }
+    for (const key of Object.keys(config.frontmatter)) {
+      if (key !== 'extraKnownFields') {
+        throw new CliError(
+          `Invalid config${sourcePath ? ` (${sourcePath})` : ''}: frontmatter has unknown key "${key}"`,
+          2,
+        );
+      }
+    }
+    if (
+      config.frontmatter.extraKnownFields !== undefined &&
+      !isStringArray(config.frontmatter.extraKnownFields)
+    ) {
+      throw new CliError(
+        `Invalid config${sourcePath ? ` (${sourcePath})` : ''}: frontmatter.extraKnownFields must be string[]`,
+        2,
+      );
+    }
+  }
+
   if (config.rules !== undefined) {
     if (!isObjectRecord(config.rules)) {
       throw new CliError(
@@ -179,6 +209,10 @@ function mergeConfig(base: UserConfig, override: UserConfig): UserConfig {
     limits: {
       ...(base.limits ?? {}),
       ...(override.limits ?? {}),
+    },
+    frontmatter: {
+      ...(base.frontmatter ?? {}),
+      ...(override.frontmatter ?? {}),
     },
     rules: {
       ...(base.rules ?? {}),
@@ -286,6 +320,11 @@ export async function resolveConfig(
     ...(merged.limits ?? {}),
   };
 
+  const frontmatter: FrontmatterConfig = {
+    ...DEFAULT_FRONTMATTER,
+    ...(merged.frontmatter ?? {}),
+  };
+
   const output: OutputConfig = {
     ...DEFAULT_OUTPUT,
     ...(merged.output ?? {}),
@@ -313,6 +352,7 @@ export async function resolveConfig(
     include,
     exclude,
     limits,
+    frontmatter,
     rules,
     allowlist: merged.allowlist ?? [],
     plugins: merged.plugins ?? [],

@@ -34,6 +34,10 @@ export interface OutputConfig {
   reportPath?: string;
 }
 
+export interface FrontmatterConfig {
+  extraKnownFields: string[];
+}
+
 export interface ResolvedConfig {
   cwd: string;
   configPath?: string;
@@ -42,6 +46,7 @@ export interface ResolvedConfig {
   include: string[];
   exclude: string[];
   limits: LimitsConfig;
+  frontmatter: FrontmatterConfig;
   rules: Record<string, RuleLevel>;
   allowlist: string[];
   plugins: string[];

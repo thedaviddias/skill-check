@@ -78,6 +78,53 @@ describe('resolveConfig additional branches', () => {
     fs.rmSync(tempDir, { recursive: true, force: true });
   });
 
+  it('defaults frontmatter.extraKnownFields to empty', async () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sc-fm-'));
+    const config = await resolveConfig(tempDir, '.', {});
+    expect(config.frontmatter.extraKnownFields).toEqual([]);
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  it('reads frontmatter.extraKnownFields from config file', async () => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sc-fm-'));
+    const configPath = path.join(tempDir, 'cfg.json');
+    fs.writeFileSync(
+      configPath,
+      JSON.stringify({
+        frontmatter: { extraKnownFields: ['disable-model-invocation'] },
+      }),
+    );
+    const config = await resolveConfig(tempDir, '.', { configPath });
+    expect(config.frontmatter.extraKnownFields).toEqual([
+      'disable-model-invocation',
+    ]);
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  });
+
+  it.each([
+    [{ frontmatter: [] }, 'frontmatter must be an object'],
+    [
+      { frontmatter: { extraKnownFields: 'disable-model-invocation' } },
+      'frontmatter.extraKnownFields must be string[]',
+    ],
+    [
+      { frontmatter: { extraKnownFields: ['ok', 1] } },
+      'frontmatter.extraKnownFields must be string[]',
+    ],
+    [
+      { frontmatter: { extraKnownField: ['x'] } },
+      'frontmatter has unknown key "extraKnownField"',
+    ],
+  ])('rejects invalid frontmatter config %j', async (value, message) => {
+    const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'sc-fm-'));
+    const configPath = path.join(tempDir, 'bad.json');
+    fs.writeFileSync(configPath, JSON.stringify(value));
+    await expect(resolveConfig(tempDir, '.', { configPath })).rejects.toThrow(
+      message,
+    );
+    fs.rmSync(tempDir, { recursive: true, force: true });
+  });
+
   it('throws for missing config path', async () => {
     await expect(
       resolveConfig('/tmp', '.', { configPath: '/does/not/exist.json' }),

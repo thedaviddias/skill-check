@@ -40,6 +40,7 @@ const baseConfig: ResolvedConfig = {
     maxCompatibilityChars: 500,
   },
   rules: {},
+  frontmatter: { extraKnownFields: [] },
   allowlist: [],
   plugins: [],
   output: { format: 'text' },

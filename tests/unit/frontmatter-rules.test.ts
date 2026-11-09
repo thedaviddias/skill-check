@@ -18,6 +18,7 @@ const context: RuleContext = {
       maxCompatibilityChars: 500,
     },
     rules: {},
+    frontmatter: { extraKnownFields: [] },
     allowlist: [],
     plugins: [],
     output: { format: 'text' },
@@ -275,6 +276,61 @@ describe('frontmatter.unknown_fields', () => {
     expect(findings).toHaveLength(1);
     expect(findings[0]?.message).toContain('foo');
     expect(findings[0]?.message).toContain('baz');
+  });
+
+  describe('with frontmatter.extraKnownFields', () => {
+    const extraContext: RuleContext = {
+      ...context,
+      config: {
+        ...context.config,
+        frontmatter: { extraKnownFields: ['disable-model-invocation'] },
+      },
+    };
+    const base = { name: 'my-skill', description: 'test' };
+
+    it('does not warn on a configured extra field', () => {
+      expect(
+        rule.evaluate(
+          makeSkill({
+            frontmatter: { ...base, 'disable-model-invocation': true },
+          }),
+          extraContext,
+        ),
+      ).toHaveLength(0);
+    });
+
+    it('still warns on a field that is not configured', async () => {
+      const findings = await rule.evaluate(
+        makeSkill({
+          frontmatter: {
+            ...base,
+            'disable-model-invocation': true,
+            other: 'x',
+          },
+        }),
+        extraContext,
+      );
+      expect(findings).toHaveLength(1);
+      expect(findings[0]?.message).toContain('other');
+      expect(findings[0]?.message).not.toContain('disable-model-invocation');
+    });
+
+    it('still warns on a typo of a spec field', async () => {
+      const findings = await rule.evaluate(
+        makeSkill({ frontmatter: { ...base, allowed_tools: 'Read' } }),
+        extraContext,
+      );
+      expect(findings).toHaveLength(1);
+      expect(findings[0]?.message).toContain('allowed_tools');
+    });
+
+    it('lists configured extras in the suggestion', async () => {
+      const findings = await rule.evaluate(
+        makeSkill({ frontmatter: { ...base, other: 'x' } }),
+        extraContext,
+      );
+      expect(findings[0]?.suggestion).toContain('disable-model-invocation');
+    });
   });
 
   it('skips when no frontmatter', () => {
